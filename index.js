@@ -42,7 +42,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://127.0.0.1:5173", // Permite localhost si no está definido
+  origin: process.env.CLIENT_URL || "http://127.0.0.1:5173", 
   credentials: true
 }));
 app.use(express.json());
@@ -119,9 +119,9 @@ app.post('/create_preference', async (req, res) => {
       metadata: { eventId, name, lastName, email,tel }, // Se mantiene eventId en metadata
       auto_return: 'approved',
       back_urls: {
-        success: `http://localhost:3000/payment_success`,
-        failure: 'http://localhost:3000/payment_failure',
-        pending: 'http://localhost:3000/payment_pending'
+        success: `${process.env.CLIENT_URL}/payment_success`,
+        failure: `${process.env.CLIENT_URL}/payment_failure`,
+        pending: `${process.env.CLIENT_URL}/payment_pending`
       }
     };
 
@@ -169,7 +169,7 @@ app.get('/payment_success', async (req, res) => {
     });
 
     await transaction.save();
-    res.redirect(`http://localhost:5173/payment_success?transactionId=${transaction._id}`);
+    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
   } catch (error) {
     console.log('Error al guardar la transacción:', error);
     res.status(500).send('Error al guardar la transacción.');
@@ -192,7 +192,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename=\"comprobante_${transactionId}.pdf\"`);
 
     const doc = new PDFDocument({ margin: 50 });
-    const verificationUrl = `http://localhost:5173/verification_result?transactionId=${transaction._id}`;
+    const verificationUrl = `${process.env.CLIENT_URL}/verification_result?transactionId=${transaction._id}`;
     const qrCodeImage = await QRCode.toDataURL(verificationUrl);
 
     const containerX = 100;
