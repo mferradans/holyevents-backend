@@ -6,7 +6,10 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { verifyToken } from './authRoutes.js'; // Importar middleware de verificación
 import jwt from 'jsonwebtoken'; // Importa jsonwebtoken
-const JWT_SECRET = 'tu_clave_secreta_aqui'; // Usa tu clave secreta
+import dotenv from 'dotenv';
+dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET; // Ahora usa la variable de entorno
 import Transaction from '../models/Transaction.js';
 
 const router = express.Router();

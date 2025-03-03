@@ -4,7 +4,10 @@ import jwt from 'jsonwebtoken';
 import Admin from '../models/Admin.js';
 
 const router = express.Router();
-const JWT_SECRET = 'tu_clave_secreta_aqui'; // Usa una clave secreta fuerte en producción
+import dotenv from 'dotenv';
+dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET; // Ahora usa la variable de entorno
 
 // Middleware para verificar token y extraer el adminId
 const verifyToken = (req, res, next) => {

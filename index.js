@@ -2,6 +2,7 @@ import express from "express" ;
 import cors from "cors";
 import dotenv from "dotenv"; // Importamos dotenv para las variables de entorno
 dotenv.config();
+
 // SDK de Mercado Pago
 import { MercadoPagoConfig, Preference } from "mercadopago" ;
 import Transaction from './models/Transaction.js';
@@ -41,7 +42,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 app.use(cors({
-  origin: process.env.CLIENT_URL, // Solo permite solicitudes desde el frontend configurado
+  origin: process.env.CLIENT_URL || "http://127.0.0.1:5173", // Permite localhost si no está definido
   credentials: true
 }));
 app.use(express.json());
