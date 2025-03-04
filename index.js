@@ -144,30 +144,30 @@ app.post('/create_preference', async (req, res) => {
 
 
 app.get('/payment_success', async (req, res) => {
-  const { payment_id, status, preference_id } = req.query;
-  
+  const { payment_id, status } = req.query;
+
   if (status !== 'approved') {
     return res.send('El pago no fue exitoso.');
   }
 
   try {
-    console.log(`✅ Recibida solicitud a /payment_success con preference_id: ${preference_id}`);
+    console.log(`✅ Recibida solicitud a /payment_success con payment_id: ${payment_id}`);
 
-    // ✅ 1️⃣ Obtener la preferencia de Mercado Pago para recuperar los datos de la compra
-    const preferenceResponse = await axios.get(`https://api.mercadopago.com/checkout/preferences/${preference_id}`, {
+    // ✅ 1️⃣ Consultar la API de Mercado Pago para obtener los datos de la transacción
+    const paymentResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
-    console.log(`🔍 Preferencia obtenida: ${JSON.stringify(preferenceResponse.data, null, 2)}`);
+    console.log(`🔍 Respuesta de Mercado Pago: ${JSON.stringify(paymentResponse.data, null, 2)}`);
 
-    const metadata = preferenceResponse.data.metadata;
-    
+    const metadata = paymentResponse.data.metadata;
+
     if (!metadata || !metadata.eventId) {
-      console.log('❌ No se encontró metadata en la preferencia.');
-      return res.status(400).json({ error: 'No se encontraron datos de compra en la preferencia de Mercado Pago.' });
+      console.log('❌ No se encontró metadata en la respuesta de Mercado Pago.');
+      return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
     }
 
-    // ✅ 2️⃣ Guardar la transacción en la BD AHORA porque ya está aprobada
+    // ✅ 2️⃣ Guardar la transacción en la BD
     const transaction = new Transaction({
       eventId: metadata.eventId,
       price: metadata.price,
@@ -178,17 +178,17 @@ app.get('/payment_success', async (req, res) => {
       tel: metadata.tel,
       selectedMenus: metadata.selectedMenus,
       transactionDate: new Date(),
-      status: 'approved', // Estado del pago aprobado
+      status: 'approved',
     });
 
     await transaction.save();
     console.log(`✅ Transacción guardada en BD con ID: ${transaction._id}`);
 
-    // ✅ 3️⃣ Redirigir a la página de éxito con el ID de la transacción
+    // ✅ 3️⃣ Redirigir al usuario con `transactionId`
     const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
     console.log(`🔄 Redirigiendo a: ${redirectUrl}`);
-
     res.redirect(redirectUrl);
+
   } catch (error) {
     console.log('❌ Error al procesar el pago:', error);
     res.status(500).send('Error al procesar el pago.');
