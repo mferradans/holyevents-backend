@@ -115,7 +115,6 @@ app.post('/create_preference', async (req, res) => {
     const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
 
     if (!eventId || !price || !name || !lastName || !email) {
-      console.log('❌ Error: Datos incompletos en la solicitud.');
       return res.status(400).json({ error: 'Faltan datos requeridos.' });
     }
 
@@ -123,18 +122,15 @@ app.post('/create_preference', async (req, res) => {
     const event = await Event.findById(eventId).populate('createdBy');
 
     if (!event) {
-      console.log(`❌ Error: No se encontró el evento con ID ${eventId}`);
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
     const accessToken = event.createdBy?.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
     if (!accessToken) {
-      console.log('❌ Error: No se encontró un accessToken válido.');
       return res.status(500).json({ error: 'No se pudo obtener el accessToken de Mercado Pago' });
     }
 
-    console.log('✅ Token de Mercado Pago obtenido correctamente');
 
     const client = new MercadoPagoConfig({ accessToken });
 
@@ -157,13 +153,11 @@ app.post('/create_preference', async (req, res) => {
       },
     };
 
-    console.log('📝 Enviando datos a Mercado Pago para crear preferencia...');
 
     const preference = new Preference(client);
     const result = await preference.create({ body });
 
     if (!result || !result.id) {
-      console.log('❌ Error: No se obtuvo un ID de preferencia de Mercado Pago.');
       return res.status(500).json({ error: 'Error al crear la preferencia de pago' });
     }
 
@@ -181,7 +175,6 @@ app.post('/create_preference', async (req, res) => {
       tel,
     };
 
-    console.log(`✅ Datos guardados en global.selectedMenusStorage para preferencia ID: ${result.id}`);
 
     res.json({ id: result.id });
   } catch (error) {
@@ -193,31 +186,21 @@ app.post('/create_preference', async (req, res) => {
 
 // Guardar la transacción con todos los datos
 app.get('/payment_success', async (req, res) => {
-  logToFile('✅ Endpoint /payment_success alcanzado');
-
   const { payment_id, preference_id, status } = req.query;
-  logToFile(`🌍 Query Params recibidos: ${JSON.stringify(req.query)}`);
-
   if (status !== 'approved') {
-    logToFile('❌ El pago no fue exitoso.');
     return res.send('El pago no fue exitoso.');
   }
 
   try {
-    logToFile('📥 Buscando datos en global.selectedMenusStorage...');
+    // Recuperar los datos de la compra desde el almacenamiento temporal
     const storedData = global.selectedMenusStorage ? global.selectedMenusStorage[preference_id] : null;
-
     if (!storedData) {
-      logToFile('❌ No se encontraron datos en global.selectedMenusStorage.');
       return res.status(400).json({ error: 'Datos de compra no encontrados' });
     }
 
-    logToFile(`✅ Datos encontrados en global.selectedMenusStorage: ${JSON.stringify(storedData)}`);
+    const { selectedMenus, eventId, name, lastName, email, price,tel } = storedData;
+    delete global.selectedMenusStorage[preference_id]; // Eliminar del almacenamiento temporal
 
-    const { selectedMenus, eventId, name, lastName, email, price, tel } = storedData;
-    delete global.selectedMenusStorage[preference_id];
-
-    logToFile('📝 Creando nueva transacción...');
     const transaction = new Transaction({
       eventId,
       price,
@@ -231,17 +214,13 @@ app.get('/payment_success', async (req, res) => {
     });
 
     await transaction.save();
-    logToFile(`✅ Transacción guardada con éxito: ${transaction._id}`);
-
-    const redirectURL = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
-    logToFile(`🔀 Redirigiendo a: ${redirectURL}`);
-
-    res.redirect(redirectURL);
+    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
   } catch (error) {
-    logToFile(`❌ Error al guardar la transacción: ${error.message}`);
+    console.log('Error al guardar la transacción:', error);
     res.status(500).send('Error al guardar la transacción.');
   }
 });
+    
 
 app.get('/logs', (req, res) => {
   try {
