@@ -142,20 +142,33 @@ app.post('/create_preference', async (req, res) => {
 // Guardar la transacción con todos los datos
 app.get('/payment_success', async (req, res) => {
   const { payment_id, preference_id, status } = req.query;
+
+  console.log("✅ Endpoint /payment_success alcanzado");
+  console.log("🌍 Query Params recibidos:", req.query);
+  console.log("🆔 Payment ID:", payment_id);
+  console.log("🔗 Preference ID:", preference_id);
+  console.log("📌 Estado del pago:", status);
+
   if (status !== 'approved') {
+    console.error("❌ Error: Pago no aprobado");
     return res.send('El pago no fue exitoso.');
   }
 
   try {
     // Recuperar los datos de la compra desde el almacenamiento temporal
+    console.log("📥 Buscando datos en global.selectedMenusStorage...");
     const storedData = global.selectedMenusStorage ? global.selectedMenusStorage[preference_id] : null;
+
     if (!storedData) {
+      console.error("❌ Error: No se encontraron datos de compra en el almacenamiento temporal.");
       return res.status(400).json({ error: 'Datos de compra no encontrados' });
     }
 
-    const { selectedMenus, eventId, name, lastName, email, price,tel } = storedData;
-    delete global.selectedMenusStorage[preference_id]; // Eliminar del almacenamiento temporal
+    console.log("✅ Datos encontrados en global.selectedMenusStorage:", storedData);
 
+    const { selectedMenus, eventId, name, lastName, email, price, tel } = storedData;
+    
+    console.log("📝 Creando nueva transacción...");
     const transaction = new Transaction({
       eventId,
       price,
@@ -169,12 +182,21 @@ app.get('/payment_success', async (req, res) => {
     });
 
     await transaction.save();
-    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
+    console.log("✅ Transacción guardada con éxito:", transaction._id);
+
+    delete global.selectedMenusStorage[preference_id]; // Eliminar del almacenamiento temporal
+    console.log("🗑️ Datos eliminados de global.selectedMenusStorage.");
+
+    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
+    console.log("🔀 Redirigiendo a:", redirectUrl);
+    
+    res.redirect(redirectUrl);
   } catch (error) {
-    console.log('Error al guardar la transacción:', error);
+    console.error('❌ Error al guardar la transacción:', error);
     res.status(500).send('Error al guardar la transacción.');
   }
 });
+
     
 
 
