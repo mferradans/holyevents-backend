@@ -155,7 +155,6 @@ app.get('/payment_success', async (req, res) => {
   }
 
   try {
-    // Recuperar los datos de la compra desde el almacenamiento temporal
     console.log("📥 Buscando datos en global.selectedMenusStorage...");
     const storedData = global.selectedMenusStorage ? global.selectedMenusStorage[preference_id] : null;
 
@@ -167,7 +166,8 @@ app.get('/payment_success', async (req, res) => {
     console.log("✅ Datos encontrados en global.selectedMenusStorage:", storedData);
 
     const { selectedMenus, eventId, name, lastName, email, price, tel } = storedData;
-    
+    delete global.selectedMenusStorage[preference_id];
+
     console.log("📝 Creando nueva transacción...");
     const transaction = new Transaction({
       eventId,
@@ -184,18 +184,16 @@ app.get('/payment_success', async (req, res) => {
     await transaction.save();
     console.log("✅ Transacción guardada con éxito:", transaction._id);
 
-    delete global.selectedMenusStorage[preference_id]; // Eliminar del almacenamiento temporal
-    console.log("🗑️ Datos eliminados de global.selectedMenusStorage.");
-
     const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
     console.log("🔀 Redirigiendo a:", redirectUrl);
-    
+
     res.redirect(redirectUrl);
   } catch (error) {
     console.error('❌ Error al guardar la transacción:', error);
     res.status(500).send('Error al guardar la transacción.');
   }
 });
+
 
     
 
