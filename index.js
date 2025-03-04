@@ -19,6 +19,8 @@ import { fileURLToPath } from 'url';
 import Event from './models/Event.js';
 import axios from 'axios';
 import fetch from 'node-fetch'; // Asegúrate de importar esto al inicio del archivo
+import fs from 'fs';
+import path from 'path';
 
 
 const mongoURI = process.env.MONGODB_URI;
@@ -39,7 +41,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
+const logFilePath = path.join(__dirname, 'logs.txt');
+function logToFile(message) {
+  const logMessage = `${new Date().toISOString()} - ${message}\n`;
+  fs.appendFileSync(logFilePath, logMessage);
+}
 
 app.use(cors({
   origin: process.env.CLIENT_URL || "http://127.0.0.1:5173", 
@@ -104,71 +110,116 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 
 
 app.post('/create_preference', async (req, res) => {
+  console.log('✅ Recibida solicitud a /create_preference');
+  console.log('📥 Datos recibidos:', req.body);
+
   try {
-    const { eventId, price, name, lastName, email, selectedMenus,tel } = req.body;
+    const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
+
+    if (!eventId || !price || !name || !lastName || !email) {
+      console.log('❌ Error: Datos incompletos en la solicitud.');
+      return res.status(400).json({ error: 'Faltan datos requeridos.' });
+    }
+
+    console.log('🔍 Buscando evento en la base de datos...');
     const event = await Event.findById(eventId).populate('createdBy');
+
     if (!event) {
+      console.log(`❌ Error: No se encontró el evento con ID ${eventId}`);
       return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
-    const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const accessToken = event.createdBy?.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+    if (!accessToken) {
+      console.log('❌ Error: No se encontró un accessToken válido.');
+      return res.status(500).json({ error: 'No se pudo obtener el accessToken de Mercado Pago' });
+    }
+
+    console.log('✅ Token de Mercado Pago obtenido correctamente');
+
     const client = new MercadoPagoConfig({ accessToken });
+
     const body = {
-      items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
-      payer: { name, surname: lastName, email,tel },
-      metadata: { eventId, name, lastName, email,tel }, // Se mantiene eventId en metadata
+      items: [
+        {
+          title: event.name,
+          quantity: 1,
+          unit_price: Number(price),
+          currency_id: 'ARS',
+        },
+      ],
+      payer: { name, surname: lastName, email, tel },
+      metadata: { eventId, name, lastName, email, tel },
       auto_return: 'approved',
       back_urls: {
         success: `${process.env.CLIENT_URL}/payment_success`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
-        pending: `${process.env.CLIENT_URL}/payment_pending`
-      }
+        pending: `${process.env.CLIENT_URL}/payment_pending`,
+      },
     };
+
+    console.log('📝 Enviando datos a Mercado Pago para crear preferencia...');
 
     const preference = new Preference(client);
     const result = await preference.create({ body });
 
+    if (!result || !result.id) {
+      console.log('❌ Error: No se obtuvo un ID de preferencia de Mercado Pago.');
+      return res.status(500).json({ error: 'Error al crear la preferencia de pago' });
+    }
+
+    console.log(`✅ Preferencia creada con éxito. ID: ${result.id}`);
+
     // Guardar los menús seleccionados temporalmente en el backend
     global.selectedMenusStorage = global.selectedMenusStorage || {};
-    global.selectedMenusStorage[result.id] = { selectedMenus, eventId, name, lastName, email, price,tel };
+    global.selectedMenusStorage[result.id] = {
+      selectedMenus,
+      eventId,
+      name,
+      lastName,
+      email,
+      price,
+      tel,
+    };
+
+    console.log(`✅ Datos guardados en global.selectedMenusStorage para preferencia ID: ${result.id}`);
 
     res.json({ id: result.id });
   } catch (error) {
-    console.log(error);
+    console.log('❌ Error inesperado en /create_preference:', error.message);
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
 
+
 // Guardar la transacción con todos los datos
 app.get('/payment_success', async (req, res) => {
-  const { payment_id, preference_id, status } = req.query;
+  logToFile('✅ Endpoint /payment_success alcanzado');
 
-  console.log("✅ Endpoint /payment_success alcanzado");
-  console.log("🌍 Query Params recibidos:", req.query);
-  console.log("🆔 Payment ID:", payment_id);
-  console.log("🔗 Preference ID:", preference_id);
-  console.log("📌 Estado del pago:", status);
+  const { payment_id, preference_id, status } = req.query;
+  logToFile(`🌍 Query Params recibidos: ${JSON.stringify(req.query)}`);
 
   if (status !== 'approved') {
-    console.error("❌ Error: Pago no aprobado");
+    logToFile('❌ El pago no fue exitoso.');
     return res.send('El pago no fue exitoso.');
   }
 
   try {
-    console.log("📥 Buscando datos en global.selectedMenusStorage...");
+    logToFile('📥 Buscando datos en global.selectedMenusStorage...');
     const storedData = global.selectedMenusStorage ? global.selectedMenusStorage[preference_id] : null;
 
     if (!storedData) {
-      console.error("❌ Error: No se encontraron datos de compra en el almacenamiento temporal.");
+      logToFile('❌ No se encontraron datos en global.selectedMenusStorage.');
       return res.status(400).json({ error: 'Datos de compra no encontrados' });
     }
 
-    console.log("✅ Datos encontrados en global.selectedMenusStorage:", storedData);
+    logToFile(`✅ Datos encontrados en global.selectedMenusStorage: ${JSON.stringify(storedData)}`);
 
     const { selectedMenus, eventId, name, lastName, email, price, tel } = storedData;
     delete global.selectedMenusStorage[preference_id];
 
-    console.log("📝 Creando nueva transacción...");
+    logToFile('📝 Creando nueva transacción...');
     const transaction = new Transaction({
       eventId,
       price,
@@ -182,14 +233,14 @@ app.get('/payment_success', async (req, res) => {
     });
 
     await transaction.save();
-    console.log("✅ Transacción guardada con éxito:", transaction._id);
+    logToFile(`✅ Transacción guardada con éxito: ${transaction._id}`);
 
-    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
-    console.log("🔀 Redirigiendo a:", redirectUrl);
+    const redirectURL = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
+    logToFile(`🔀 Redirigiendo a: ${redirectURL}`);
 
-    res.redirect(redirectUrl);
+    res.redirect(redirectURL);
   } catch (error) {
-    console.error('❌ Error al guardar la transacción:', error);
+    logToFile(`❌ Error al guardar la transacción: ${error.message}`);
     res.status(500).send('Error al guardar la transacción.');
   }
 });
