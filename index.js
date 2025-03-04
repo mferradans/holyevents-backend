@@ -19,8 +19,6 @@ import { fileURLToPath } from 'url';
 import Event from './models/Event.js';
 import axios from 'axios';
 import fetch from 'node-fetch'; // Asegúrate de importar esto al inicio del archivo
-import fs from 'fs';
-import path from 'path';
 
 
 const mongoURI = process.env.MONGODB_URI;
