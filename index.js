@@ -114,7 +114,7 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // **1️⃣ Guardamos la transacción en la BD antes del pago**
+    // ✅ 1️⃣ Guardar la transacción en la BD antes del pago
     const newTransaction = new Transaction({
       eventId,
       price,
@@ -125,15 +125,18 @@ app.post('/create_preference', async (req, res) => {
       tel,
       selectedMenus,
       transactionDate: new Date(),
-      status: 'pending', // Estado inicial de la transacción
+      status: 'pending',
     });
 
     await newTransaction.save();
 
+    console.log(`✅ Transacción creada en BD con ID: ${newTransaction._id}`);
+
+    // ✅ 2️⃣ Enviar transactionId en `metadata` a Mercado Pago
     const body = {
       items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
       payer: { name, surname: lastName, email, tel },
-      metadata: { transactionId: newTransaction._id.toString() }, // **2️⃣ Guardamos el transactionId en metadata**
+      metadata: { transactionId: newTransaction._id.toString() }, // Guardamos el ID aquí
       auto_return: 'approved',
       back_urls: {
         success: `${process.env.CLIENT_URL}/payment_success`,
@@ -142,12 +145,16 @@ app.post('/create_preference', async (req, res) => {
       }
     };
 
+    console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
+
     const preference = new Preference(client);
     const result = await preference.create({ body });
 
+    console.log(`✅ Preferencia creada con ID: ${result.id}`);
+
     res.json({ id: result.id });
   } catch (error) {
-    console.log(error);
+    console.log('❌ Error en create_preference:', error);
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
@@ -163,34 +170,46 @@ app.get('/payment_success', async (req, res) => {
   }
 
   try {
-    // **1️⃣ Obtener el transactionId desde Mercado Pago**
-    const preference = await axios.get(`https://api.mercadopago.com/checkout/preferences/${preference_id}`, {
+    console.log(`✅ Recibida solicitud a /payment_success con preference_id: ${preference_id}`);
+
+    // ✅ 1️⃣ Obtener el transactionId desde Mercado Pago
+    const preferenceResponse = await axios.get(`https://api.mercadopago.com/checkout/preferences/${preference_id}`, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
-    const transactionId = preference.data.metadata.transactionId;
+    console.log(`🔍 Preferencia obtenida: ${JSON.stringify(preferenceResponse.data, null, 2)}`);
+
+    const transactionId = preferenceResponse.data.metadata.transactionId;
     
     if (!transactionId) {
+      console.log('❌ No se encontró el ID de la transacción en metadata.');
       return res.status(400).json({ error: 'No se encontró el ID de la transacción en Mercado Pago.' });
     }
 
-    // **2️⃣ Buscar la transacción en la base de datos**
+    // ✅ 2️⃣ Buscar la transacción en la BD
     const transaction = await Transaction.findById(transactionId);
     if (!transaction) {
+      console.log(`❌ No se encontró la transacción en la BD con ID: ${transactionId}`);
       return res.status(400).json({ error: 'No se encontró la transacción en la base de datos.' });
     }
 
-    // **3️⃣ Actualizar el estado de la transacción a "approved"**
+    // ✅ 3️⃣ Actualizar el estado de la transacción a "approved"
     transaction.status = 'approved';
     await transaction.save();
 
-    // **4️⃣ Redirigir con el transactionId**
-    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transactionId}`);
+    console.log(`✅ Transacción actualizada como aprobada: ${transactionId}`);
+
+    // ✅ 4️⃣ Redirigir con el transactionId
+    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transactionId}`;
+    console.log(`🔄 Redirigiendo a: ${redirectUrl}`);
+
+    res.redirect(redirectUrl);
   } catch (error) {
-    console.log('Error al procesar el pago:', error);
+    console.log('❌ Error al procesar el pago:', error);
     res.status(500).send('Error al procesar el pago.');
   }
 });
+
 
     
 
