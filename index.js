@@ -243,6 +243,15 @@ app.get('/payment_success', async (req, res) => {
   }
 });
 
+app.get('/logs', (req, res) => {
+  try {
+    const logs = fs.readFileSync(logFilePath, 'utf8');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(logs);
+  } catch (error) {
+    res.status(500).send('Error al leer los logs.');
+  }
+});
 
     
 
