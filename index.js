@@ -173,30 +173,31 @@ app.get('/payment_success', async (req, res) => {
       return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
     }
 
-    const transaction = new Transaction({
-      eventId: metadata.eventId,
-      price: paymentResponse.data.transaction_amount,
-      quantity: 1,
-      name: metadata.name,
-      lastName: metadata.lastName,
-      email: metadata.email,
-      tel: metadata.tel,
-      selectedMenus: metadata.selectedMenus,
-      transactionDate: new Date(),
-      status: 'approved',
-    });
-
-    await transaction.save();
-    console.log(`✅ Transacción guardada con éxito en la BD con ID: ${transaction._id}`);
-
-    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
-    console.log(`Redirigiendo al usuario a: ${redirectUrl}`);
-    res.redirect(redirectUrl);
-
-  } catch (error) {
-    console.error('❌ Error en /payment_success:', error);
-    res.status(500).send('Error al procesar el pago.');
-  }
+    try {
+      console.log('Preparando para guardar la transacción en la BD...');
+      const transaction = new Transaction({
+        eventId: metadata.eventId,
+        price: paymentResponse.data.transaction_amount,
+        quantity: 1,
+        name: metadata.name,
+        lastName: metadata.lastName,
+        email: metadata.email,
+        tel: metadata.tel,
+        selectedMenus: metadata.selectedMenus,
+        transactionDate: new Date(),
+        status: 'approved',
+      });
+    
+      const savedTransaction = await transaction.save();
+      console.log(`✅ Transacción guardada con éxito en la BD con ID: ${savedTransaction._id}`);
+    
+      const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`;
+      console.log(`Redirigiendo al usuario a: ${redirectUrl}`);
+      res.redirect(redirectUrl);
+    } catch (error) {
+      console.error('Error al guardar la transacción:', error);
+      res.status(500).send('Error interno del servidor al guardar la transacción.');
+    }
 });
 
 
