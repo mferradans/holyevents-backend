@@ -141,6 +141,9 @@ console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metada
 
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
+  
+  console.log('✅ Entrando a /payment_success');
+  console.log(`🔍 Datos recibidos: payment_id=${payment_id}, status=${status}`);
 
   if (status !== 'approved') {
     console.log('Pago no aprobado:', status);
@@ -148,19 +151,24 @@ app.get('/payment_success', async (req, res) => {
   }
 
   try {
-    console.log(`✅ Recibida solicitud a /payment_success con payment_id: ${payment_id}`);
-    const paymentResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
+    const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${payment_id}`;
+    console.log(`Consultando detalles de pago en: ${paymentDetailsUrl}`);
+
+    const paymentResponse = await axios.get(paymentDetailsUrl, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
-    console.log(`🔍 Respuesta de Mercado Pago: ${JSON.stringify(paymentResponse.data, null, 2)}`);
+    console.log(`Respuesta de Mercado Pago recibida para payment_id=${payment_id}:`, paymentResponse.data);
+
     const metadata = paymentResponse.data.metadata;
+    console.log(`Metadata recibida:`, metadata);
 
     if (!metadata || !metadata.eventId) {
-      console.log('❌ No se encontró metadata en la respuesta de Mercado Pago.');
+      console.log('❌ Metadata faltante o incompleta en la respuesta de Mercado Pago.');
       return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
     }
 
+    console.log('Preparando para guardar la transacción en la BD...');
     const transaction = new Transaction({
       eventId: metadata.eventId,
       price: paymentResponse.data.transaction_amount,
@@ -175,11 +183,14 @@ app.get('/payment_success', async (req, res) => {
     });
 
     await transaction.save();
-    console.log(`✅ Transacción guardada en BD con ID: ${transaction._id}`);
-    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
+    console.log(`✅ Transacción guardada con éxito en la BD con ID: ${transaction._id}`);
+
+    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
+    console.log(`Redirigiendo al usuario a: ${redirectUrl}`);
+    res.redirect(redirectUrl);
 
   } catch (error) {
-    console.error('❌ Error al procesar el pago:', error);
+    console.error('❌ Error en /payment_success:', error);
     res.status(500).send('Error al procesar el pago.');
   }
 });
