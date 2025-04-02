@@ -143,7 +143,7 @@ app.post('/create_preference', async (req, res) => {
 });
 
 
-const getPaymentDetails = async (paymentId, retries = 3) => {
+const getPaymentDetails = async (paymentId, retries = 1) => {
   try {
     const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${paymentId}`;
     const paymentResponse = await axios.get(paymentDetailsUrl, {
@@ -151,9 +151,10 @@ const getPaymentDetails = async (paymentId, retries = 3) => {
     });
     return paymentResponse.data;
   } catch (error) {
+    console.log(`Intento fallido para obtener detalles del pago: ${error.message}`);
     if (retries > 0 && error.response && error.response.status === 404) {
       console.log(`Pago no encontrado, reintentando... Quedan ${retries} intentos`);
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Espera 2 segundos antes de reintentar
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Espera 3 segundos antes de reintentar
       return getPaymentDetails(paymentId, retries - 1);
     } else {
       throw error; // Re-lanza el error si no es un 404 o se acabaron los reintentos
@@ -173,6 +174,11 @@ app.get('/payment_success', async (req, res) => {
 
   try {
     const paymentData = await getPaymentDetails(payment_id);
+
+    if (!paymentData || paymentData.status !== 'approved') {
+      console.error('Datos de pago no encontrados o no aprobados después de reintentos.');
+      return res.status(404).send('Pago no encontrado o no aprobado.');
+    }
 
     const metadata = paymentData.metadata;
     console.log(`Metadata recibida:`, metadata);
@@ -195,11 +201,10 @@ app.get('/payment_success', async (req, res) => {
 
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error(`Error al procesar la solicitud /payment_success:`, error);
+    console.error(`Error al procesar la solicitud /payment_success: ${error}`);
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
-
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
