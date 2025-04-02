@@ -145,6 +145,7 @@ app.post('/create_preference', async (req, res) => {
 
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
+
   console.log(`🔍 Entrando a /payment_success con Payment ID: ${payment_id} y status: ${status}`);
 
   if (status !== 'approved') {
@@ -191,13 +192,12 @@ app.get('/payment_success', async (req, res) => {
 
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error(`Error al intentar guardar la transacción: ${error.response ? error.response.data : error}`);
+    console.error(`Error al intentar guardar la transacción:`, error);
+    // Aquí mejoramos cómo se logra el error
+    console.error(JSON.stringify(error, Object.getOwnPropertyNames(error)));
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
-
-
-
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
