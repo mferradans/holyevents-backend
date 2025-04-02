@@ -8,6 +8,7 @@ import { verifyToken } from './authRoutes.js'; // Importar middleware de verific
 import jwt from 'jsonwebtoken'; // Importa jsonwebtoken
 import dotenv from 'dotenv';
 import axios from 'axios';
+import FormData from 'form-data';
 
 dotenv.config();
 
