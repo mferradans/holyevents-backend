@@ -139,24 +139,21 @@ console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metada
 );
 
 
-
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
 
   if (status !== 'approved') {
-    return res.send('El pago no fue exitoso.');
+    console.log('Pago no aprobado:', status);
+    return res.redirect(`${process.env.CLIENT_URL}/payment_failure`);
   }
 
   try {
     console.log(`✅ Recibida solicitud a /payment_success con payment_id: ${payment_id}`);
-
-    // ✅ 1️⃣ Consultar la API de Mercado Pago para obtener los datos de la transacción
     const paymentResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
     console.log(`🔍 Respuesta de Mercado Pago: ${JSON.stringify(paymentResponse.data, null, 2)}`);
-
     const metadata = paymentResponse.data.metadata;
 
     if (!metadata || !metadata.eventId) {
@@ -164,7 +161,6 @@ app.get('/payment_success', async (req, res) => {
       return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
     }
 
-    // ✅ 2️⃣ Guardar la transacción en la BD
     const transaction = new Transaction({
       eventId: metadata.eventId,
       price: paymentResponse.data.transaction_amount,
@@ -180,14 +176,10 @@ app.get('/payment_success', async (req, res) => {
 
     await transaction.save();
     console.log(`✅ Transacción guardada en BD con ID: ${transaction._id}`);
-
-    // ✅ 3️⃣ Redirigir al usuario con `transactionId`
-    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`;
-    console.log(`🔄 Redirigiendo a: ${redirectUrl}`);
-    res.redirect(redirectUrl);
+    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
 
   } catch (error) {
-    console.log('❌ Error al procesar el pago:', error);
+    console.error('❌ Error al procesar el pago:', error);
     res.status(500).send('Error al procesar el pago.');
   }
 });
