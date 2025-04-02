@@ -105,29 +105,30 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 
 app.post('/create_preference', async (req, res) => {
   const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
-  const event = await Event.findById(eventId).populate('createdBy');
-  if (!event) {
-      return res.status(404).json({ error: 'Evento no encontrado' });
-  }
 
-  const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
-  const client = new MercadoPagoConfig({ accessToken });
+  try {
+    const event = await Event.findById(eventId).populate('createdBy');
+    if (!event) {
+        return res.status(404).json({ error: 'Evento no encontrado' });
+    }
 
+    const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const client = new MercadoPagoConfig({ accessToken });
 
-  const body = {
-    items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
-    payer: { name, surname: lastName, email, tel },
-    metadata: { eventId, name, lastName, email, price, tel, selectedMenus },
-    auto_return: 'approved',
-    back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success`,
-        failure: `${process.env.CLIENT_URL}/payment_failure`,
-        pending: `${process.env.CLIENT_URL}/payment_pending`
-    },
-    external_reference: eventId.toString(), // Asegúrate de que esto se esté pasando correctamente
-};
+    const body = {
+      items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
+      payer: { name, surname: lastName, email, tel },
+      metadata: { eventId, name, lastName, email, price, tel, selectedMenus },
+      auto_return: 'approved',
+      back_urls: {
+          success: `${process.env.CLIENT_URL}/payment_success`,
+          failure: `${process.env.CLIENT_URL}/payment_failure`,
+          pending: `${process.env.CLIENT_URL}/payment_pending`
+      },
+      external_reference: eventId.toString(),
+    };
 
-console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
+    console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
     console.log(`🔗 External Reference being sent: ${body.external_reference}`);
 
     const preference = new Preference(client);
@@ -135,13 +136,17 @@ console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metada
     console.log(`✅ Preferencia creada con ID: ${result.id}`);
 
     res.json({ id: result.id });
+  } catch (error) {
+    console.error('Error en /create_preference:', error);
+    res.status(500).json({ error: 'Error al crear la preferencia' });
   }
-);
+});
+
 
 
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
-  
+
   console.log('✅ Entrando a /payment_success');
   console.log(`🔍 Datos recibidos: payment_id=${payment_id}, status=${status}`);
 
@@ -168,7 +173,6 @@ app.get('/payment_success', async (req, res) => {
       return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
     }
 
-    console.log('Preparando para guardar la transacción en la BD...');
     const transaction = new Transaction({
       eventId: metadata.eventId,
       price: paymentResponse.data.transaction_amount,
@@ -194,6 +198,7 @@ app.get('/payment_success', async (req, res) => {
     res.status(500).send('Error al procesar el pago.');
   }
 });
+
 
 
     
