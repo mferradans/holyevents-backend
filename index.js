@@ -102,7 +102,6 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 });
 
 
-
 app.post('/create_preference', async (req, res) => {
   const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
 
@@ -115,26 +114,38 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
+    // Crear transacción en estado 'pending'
+    const newTransaction = new Transaction({
+      eventId,
+      price,
+      name,
+      lastName,
+      email,
+      tel,
+      selectedMenus,
+      status: 'pending', // Estado inicial
+    });
+
+    const savedTransaction = await newTransaction.save();
+
     const body = {
       items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
       payer: { name, surname: lastName, email, tel },
-      metadata: { eventId, name, lastName, email, price, tel, selectedMenus },
+      metadata: { transactionId: savedTransaction._id }, // Incluye el ID de la transacción
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.SERVER_URL}/payment_success?external_reference=${eventId.toString()}`,
+        success: `${process.env.SERVER_URL}/payment_success`,
         failure: `${process.env.SERVER_URL}/payment_failure`,
-          pending: `${process.env.SERVER_URL}/payment_pending`
+        pending: `${process.env.SERVER_URL}/payment_pending`
       },
-      external_reference: eventId.toString(),
+      external_reference: savedTransaction._id.toString(),
     };
 
     console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
-    console.log(`🔗 External Reference being sent: ${body.external_reference}`);
-
     const preference = new Preference(client);
     const result = await preference.create({ body });
-    console.log(`✅ Preferencia creada con ID: ${result.id}`);
 
+    console.log(`✅ Preferencia creada con ID: ${result.id}`);
     res.json({ id: result.id });
   } catch (error) {
     console.error('Error en /create_preference:', error);
@@ -142,74 +153,29 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
-
-const getPaymentDetails = async (paymentId, retries = 3) => {
-  try {
-    const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${paymentId}`;
-    const paymentResponse = await axios.get(paymentDetailsUrl, {
-      headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
-    });
-    if (paymentResponse.data && paymentResponse.data.status === 'approved') {
-      return paymentResponse.data;
-    } else {
-      throw new Error('Pago no aprobado o datos incompletos');
-    }
-  } catch (error) {
-    console.error(`Error al obtener los detalles del pago: ${error.message}`);
-    if (retries > 0) {
-      console.log(`Pago no encontrado o error en la respuesta, reintentando... Quedan ${retries} intentos`);
-      await new Promise(resolve => setTimeout(resolve, 10000)); // Espera 10 segundos antes de reintentar
-      return getPaymentDetails(paymentId, retries - 1);
-    } else {
-      throw error;
-    }
-  }
-};
-
-
 app.get('/payment_success', async (req, res) => {
-  const { payment_id, status } = req.query;
-
-  console.log(`🔍 Entrando a /payment_success con Payment ID: ${payment_id} y status: ${status}`);
-
-  if (status !== 'approved') {
-    console.log('Pago no aprobado:', status);
-    return res.redirect(`${process.env.CLIENT_URL}/payment_failure`);
-  }
+  const { external_reference } = req.query; // Usar 'external_reference' para obtener el ID de la transacción
 
   try {
-    const paymentData = await getPaymentDetails(payment_id);
+    const transaction = await Transaction.findById(external_reference);
 
-    if (!paymentData || paymentData.status !== 'approved') {
-      console.error('Datos de pago no encontrados o no aprobados después de reintentos.');
-      return res.status(404).send('Pago no encontrado o no aprobado.');
+    if (!transaction) {
+      console.error('Transacción no encontrada con el ID proporcionado.');
+      return res.status(404).send('Transacción no encontrada.');
     }
 
-    const metadata = paymentData.metadata;
-    console.log(`Metadata recibida:`, metadata);
+    // Confirmar y actualizar la transacción
+    transaction.status = 'approved';
+    await transaction.save();
 
-    const transaction = new Transaction({
-      eventId: metadata.eventId,
-      price: paymentData.transaction_amount,
-      quantity: 1,
-      name: metadata.name,
-      lastName: metadata.lastName,
-      email: metadata.email,
-      tel: metadata.tel,
-      selectedMenus: metadata.selectedMenus,
-      transactionDate: new Date(),
-      status: 'approved',
-    });
-
-    const savedTransaction = await transaction.save();
-    console.log(`✅ Transacción guardada con éxito en la BD con ID: ${savedTransaction._id}`);
-
-    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
+    console.log(`✅ Transacción actualizada con éxito en la BD con ID: ${transaction._id}`);
+    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
   } catch (error) {
     console.error(`Error al procesar la solicitud /payment_success: ${error}`);
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
+
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
