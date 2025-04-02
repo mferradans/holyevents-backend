@@ -143,24 +143,29 @@ app.post('/create_preference', async (req, res) => {
 });
 
 
-const getPaymentDetails = async (paymentId, retries = 1) => {
+const getPaymentDetails = async (paymentId, retries = 3) => {
   try {
     const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${paymentId}`;
     const paymentResponse = await axios.get(paymentDetailsUrl, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
-    return paymentResponse.data;
+    if (paymentResponse.data && paymentResponse.data.status === 'approved') {
+      return paymentResponse.data;
+    } else {
+      throw new Error('Pago no aprobado o datos incompletos');
+    }
   } catch (error) {
-    console.log(`Intento fallido para obtener detalles del pago: ${error.message}`);
-    if (retries > 0 && error.response && error.response.status === 404) {
-      console.log(`Pago no encontrado, reintentando... Quedan ${retries} intentos`);
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Espera 3 segundos antes de reintentar
+    console.error(`Error al obtener los detalles del pago: ${error.message}`);
+    if (retries > 0) {
+      console.log(`Pago no encontrado o error en la respuesta, reintentando... Quedan ${retries} intentos`);
+      await new Promise(resolve => setTimeout(resolve, 10000)); // Espera 10 segundos antes de reintentar
       return getPaymentDetails(paymentId, retries - 1);
     } else {
-      throw error; // Re-lanza el error si no es un 404 o se acabaron los reintentos
+      throw error;
     }
   }
 };
+
 
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
