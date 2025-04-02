@@ -145,10 +145,11 @@ app.post('/create_preference', async (req, res) => {
 
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
-  console.log('✅ Entrando a /payment_success con', req.query);
+
+  console.log(`🔍 Entrando a /payment_success con Payment ID: ${payment_id} y status: ${status}`);
 
   if (status !== 'approved') {
-    console.log('Pago no aprobado:', status);
+    console.error(`Pago no aprobado. Status: ${status}`);
     return res.redirect(`${process.env.CLIENT_URL}/payment_failure`);
   }
 
@@ -158,9 +159,16 @@ app.get('/payment_success', async (req, res) => {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
+    console.log(`🔍 Detalles del pago recibidos: ${JSON.stringify(paymentResponse.data)}`);
+
+    if (!paymentResponse.data || paymentResponse.data.status !== 'approved') {
+      console.error('Error o pago no aprobado en la respuesta de Mercado Pago.');
+      return res.status(400).json({ error: 'El pago no fue aprobado o no se recibieron los datos esperados.' });
+    }
+
     const metadata = paymentResponse.data.metadata;
     if (!metadata || !metadata.eventId) {
-      console.log('Metadata incompleta o falta eventId:', metadata);
+      console.error('Metadata incompleta o falta eventId.');
       return res.status(400).json({ error: 'Datos de transacción incompletos.' });
     }
 
@@ -178,13 +186,15 @@ app.get('/payment_success', async (req, res) => {
     });
 
     const savedTransaction = await transaction.save();
-    console.log(`Transacción guardada con éxito con ID: ${savedTransaction._id}`);
+    console.log(`✅ Transacción guardada con éxito con ID: ${savedTransaction._id}`);
+
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error('Error al guardar la transacción:', error);
+    console.error(`Error en /payment_success al intentar guardar la transacción: ${error}`);
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
+
 
 
 
