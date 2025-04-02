@@ -162,11 +162,13 @@ app.get('/payment_success', async (req, res) => {
     console.log(`🔍 Detalles del pago recibidos: ${JSON.stringify(paymentResponse.data)}`);
 
     if (!paymentResponse.data || paymentResponse.data.status !== 'approved') {
-      console.error('Error o pago no aprobado en la respuesta de Mercado Pago.');
+      console.error('Error o pago no aprobado en la respuesta de Mercado Pago:', paymentResponse.data);
       return res.status(400).json({ error: 'El pago no fue aprobado o no se recibieron los datos esperados.' });
     }
 
     const metadata = paymentResponse.data.metadata;
+    console.log(`Metadata recibida:`, metadata);
+
     if (!metadata || !metadata.eventId) {
       console.error('Metadata incompleta o falta eventId.');
       return res.status(400).json({ error: 'Datos de transacción incompletos.' });
@@ -190,10 +192,11 @@ app.get('/payment_success', async (req, res) => {
 
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error(`Error en /payment_success al intentar guardar la transacción: ${error}`);
+    console.error(`Error al intentar guardar la transacción: ${error}`);
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
+
 
 
 
