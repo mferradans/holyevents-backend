@@ -197,11 +197,17 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     let yPosition = 50;
 
     doc.rect(containerX, yPosition, containerWidth, 700).stroke();
+ // Carga la imagen desde la URL de ImgBB
+ if (event.coverImage) {
+  const response = await axios({
+    method: 'get',
+    url: event.coverImage,
+    responseType: 'arraybuffer'
+  });
 
-    const imagePath = path.join(__dirname, "uploads", path.basename(event.coverImage));
-    if (fs.existsSync(imagePath) && fs.lstatSync(imagePath).isFile()) {
-      doc.image(imagePath, containerX + 10, yPosition + 10, { width: 380, height: 120 });
-    }
+  const imageBuffer = Buffer.from(response.data, 'binary');
+  doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
+}
 
     yPosition += 140;
     doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })

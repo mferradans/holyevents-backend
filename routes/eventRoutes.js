@@ -13,52 +13,38 @@ const JWT_SECRET = process.env.JWT_SECRET; // Ahora usa la variable de entorno
 import Transaction from '../models/Transaction.js';
 
 const router = express.Router();
-// Configurar Multer para almacenamiento y límite de tamaño
-// Configuración de almacenamiento
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, 'uploads/');  // Carpeta donde se guardarán las imágenes
-    },
-    filename: function (req, file, cb) {
-      cb(null, Date.now() + path.extname(file.originalname));  // Nombre único para cada archivo
-    },
-  });
-  
-  // Configurar límite de tamaño y tipos de archivo permitidos
-  const upload = multer({
-    storage: storage,
-    limits: { fileSize: 3 * 1024 * 1024 },  // Límite de 1 MB
-    fileFilter: (req, file, cb) => {
-      const filetypes = /jpeg|jpg|png/;
-      const mimetype = filetypes.test(file.mimetype);
-      const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-  
-      if (mimetype && extname) {
-        return cb(null, true);
-      } else {
-        cb(new Error('Solo se permiten imágenes en formato jpeg, jpg o png'));
-      }
-    },
-  });
-  
-  // Ruta para cargar la imagen
-  router.post('/upload', (req, res) => {
-    upload.single('coverImage')(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'La imagen es demasiado grande. El límite es de 1 MB.' });
-        }
-      } else if (err) {
-        return res.status(400).json({ error: err.message });
-      }
-  
-      if (!req.file) {
-        return res.status(400).json({ error: 'No se subió ninguna imagen' });
-      }
-      
-      res.json({ imageUrl: `/uploads/${req.file.filename}` });
+// Configura Multer para manejar la memoria de almacenamiento
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+router.post('/upload', upload.single('coverImage'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No se subió ninguna imagen' });
+  }
+
+  // Crear un objeto FormData para enviar a través de axios
+  const formData = new FormData();
+  formData.append('image', req.file.buffer.toString('base64'));
+  formData.append('key', process.env.IMGBB_API_KEY);  // Asegúrate de tener esta clave en tus variables de entorno
+  formData.append('expiration', 600); // Opcional: establecer un tiempo de expiración para la imagen
+
+  try {
+    const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
+      headers: {
+        ...formData.getHeaders(),
+      },
     });
-  });
+
+    // La respuesta incluye la URL de la imagen alojada en ImgBB
+    const imageUrl = response.data.data.url;
+
+    // Puedes guardar esta URL en tu base de datos si necesitas referencia
+    res.json({ imageUrl: imageUrl });
+  } catch (error) {
+    console.error('Error al subir imagen a ImgBB:', error);
+    res.status(500).json({ error: 'Error al subir imagen a ImgBB' });
+  }
+});
 
 
 // Aplicar el middleware verifyToken a la ruta de creación de eventos
