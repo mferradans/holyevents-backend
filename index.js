@@ -170,7 +170,7 @@ app.get('/payment_success', async (req, res) => {
     // ✅ 2️⃣ Guardar la transacción en la BD
     const transaction = new Transaction({
       eventId: metadata.eventId,
-      price: metadata.price,
+      price: paymentResponse.data.transaction_amount,
       quantity: 1,
       name: metadata.name,
       lastName: metadata.lastName,
@@ -194,6 +194,7 @@ app.get('/payment_success', async (req, res) => {
     res.status(500).send('Error al procesar el pago.');
   }
 });
+
 
     
 
