@@ -197,15 +197,8 @@ app.get('/payment_success', async (req, res) => {
     } catch (error) {
       console.error('Error al guardar la transacción:', error);
       res.status(500).send('Error interno del servidor al guardar la transacción.');
-    }
+    }}
 });
-
-
-
-    
-
-
-    
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
