@@ -7,6 +7,8 @@ import fs from 'fs';
 import { verifyToken } from './authRoutes.js'; // Importar middleware de verificación
 import jwt from 'jsonwebtoken'; // Importa jsonwebtoken
 import dotenv from 'dotenv';
+import axios from 'axios';
+
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET; // Ahora usa la variable de entorno
