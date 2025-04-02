@@ -121,8 +121,8 @@ app.post('/create_preference', async (req, res) => {
       metadata: { eventId, name, lastName, email, price, tel, selectedMenus },
       auto_return: 'approved',
       back_urls: {
-          success: `${process.env.SERVER_URL}/payment_success`,
-          failure: `${process.env.SERVER_URL}/payment_failure`,
+        success: `${process.env.SERVER_URL}/payment_success?external_reference=${eventId.toString()}`,
+        failure: `${process.env.SERVER_URL}/payment_failure`,
           pending: `${process.env.SERVER_URL}/payment_pending`
       },
       external_reference: eventId.toString(),
