@@ -104,42 +104,39 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 
 
 app.post('/create_preference', async (req, res) => {
-  try {
-    const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
-    const event = await Event.findById(eventId).populate('createdBy');
-    if (!event) {
+  const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
+  const event = await Event.findById(eventId).populate('createdBy');
+  if (!event) {
       return res.status(404).json({ error: 'Evento no encontrado' });
-    }
+  }
 
-    const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
-    const client = new MercadoPagoConfig({ accessToken });
+  const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+  const client = new MercadoPagoConfig({ accessToken });
 
-    // ✅ 1️⃣ Solo creamos la preferencia de pago sin guardar en BD
-    const body = {
-      items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
-      payer: { name, surname: lastName, email, tel },
-      metadata: { eventId, name, lastName, email, price, tel, selectedMenus }, // Solo se envían datos, no guardamos en BD
-      auto_return: 'approved',
-      back_urls: {
+
+  const body = {
+    items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
+    payer: { name, surname: lastName, email, tel },
+    metadata: { eventId, name, lastName, email, price, tel, selectedMenus },
+    auto_return: 'approved',
+    back_urls: {
         success: `${process.env.CLIENT_URL}/payment_success`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
-      }
-    };
+    },
+    external_reference: eventId.toString(), // Asegúrate de que esto se esté pasando correctamente
+};
 
-    console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
+console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
+    console.log(`🔗 External Reference being sent: ${body.external_reference}`);
 
     const preference = new Preference(client);
     const result = await preference.create({ body });
-
     console.log(`✅ Preferencia creada con ID: ${result.id}`);
 
     res.json({ id: result.id });
-  } catch (error) {
-    console.log('❌ Error en create_preference:', error);
-    res.status(500).json({ error: 'Error al crear la preferencia' });
   }
-});
+);
 
 
 
