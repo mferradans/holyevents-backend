@@ -143,12 +143,9 @@ app.post('/create_preference', async (req, res) => {
 });
 
 
-
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
-
-  console.log('✅ Entrando a /payment_success');
-  console.log(`🔍 Datos recibidos: payment_id=${payment_id}, status=${status}`);
+  console.log('✅ Entrando a /payment_success con', req.query);
 
   if (status !== 'approved') {
     console.log('Pago no aprobado:', status);
@@ -157,25 +154,14 @@ app.get('/payment_success', async (req, res) => {
 
   try {
     const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${payment_id}`;
-    console.log(`Consultando detalles de pago en: ${paymentDetailsUrl}`);
-
     const paymentResponse = await axios.get(paymentDetailsUrl, {
       headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
     });
 
-    console.log(`Respuesta de Mercado Pago recibida para payment_id=${payment_id}:`, paymentResponse.data);
-
-    if (!paymentResponse.data || paymentResponse.data.status !== 'approved') {
-      console.log('Error o pago no aprobado en la respuesta de Mercado Pago.');
-      return res.status(400).json({ error: 'El pago no fue aprobado o no se recibieron los datos esperados.' });
-    }
-
     const metadata = paymentResponse.data.metadata;
-    console.log(`Metadata recibida:`, metadata);
-
     if (!metadata || !metadata.eventId) {
-      console.log('❌ Metadata faltante o incompleta en la respuesta de Mercado Pago.');
-      return res.status(400).json({ error: 'No se encontraron datos de compra en la transacción.' });
+      console.log('Metadata incompleta o falta eventId:', metadata);
+      return res.status(400).json({ error: 'Datos de transacción incompletos.' });
     }
 
     const transaction = new Transaction({
@@ -192,17 +178,14 @@ app.get('/payment_success', async (req, res) => {
     });
 
     const savedTransaction = await transaction.save();
-    console.log(`✅ Transacción guardada con éxito en la BD con ID: ${savedTransaction._id}`);
-
-    const redirectUrl = `${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`;
-    console.log(`Redirigiendo al usuario a: ${redirectUrl}`);
-    res.redirect(redirectUrl);
-
+    console.log(`Transacción guardada con éxito con ID: ${savedTransaction._id}`);
+    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error('Error al procesar la solicitud /payment_success:', error);
-    res.status(500).send('Error interno del servidor al procesar el pago.');
+    console.error('Error al guardar la transacción:', error);
+    res.status(500).send('Error interno al procesar el pago.');
   }
 });
+
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
