@@ -122,8 +122,8 @@ app.post('/create_preference', async (req, res) => {
       auto_return: 'approved',
       back_urls: {
           success: `${process.env.SERVER_URL}/payment_success`,
-          failure: `${process.env.CLIENT_URL}/payment_failure`,
-          pending: `${process.env.CLIENT_URL}/payment_pending`
+          failure: `${process.env.SERVER_URL}/payment_failure`,
+          pending: `${process.env.SERVER_URL}/payment_pending`
       },
       external_reference: eventId.toString(),
     };
@@ -143,40 +143,43 @@ app.post('/create_preference', async (req, res) => {
 });
 
 
+const getPaymentDetails = async (paymentId, retries = 3) => {
+  try {
+    const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${paymentId}`;
+    const paymentResponse = await axios.get(paymentDetailsUrl, {
+      headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
+    });
+    return paymentResponse.data;
+  } catch (error) {
+    if (retries > 0 && error.response && error.response.status === 404) {
+      console.log(`Pago no encontrado, reintentando... Quedan ${retries} intentos`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Espera 2 segundos antes de reintentar
+      return getPaymentDetails(paymentId, retries - 1);
+    } else {
+      throw error; // Re-lanza el error si no es un 404 o se acabaron los reintentos
+    }
+  }
+};
+
 app.get('/payment_success', async (req, res) => {
   const { payment_id, status } = req.query;
 
   console.log(`🔍 Entrando a /payment_success con Payment ID: ${payment_id} y status: ${status}`);
 
   if (status !== 'approved') {
-    console.error(`Pago no aprobado. Status: ${status}`);
+    console.log('Pago no aprobado:', status);
     return res.redirect(`${process.env.CLIENT_URL}/payment_failure`);
   }
 
   try {
-    const paymentDetailsUrl = `https://api.mercadopago.com/v1/payments/${payment_id}`;
-    const paymentResponse = await axios.get(paymentDetailsUrl, {
-      headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
-    });
+    const paymentData = await getPaymentDetails(payment_id);
 
-    console.log(`🔍 Detalles del pago recibidos: ${JSON.stringify(paymentResponse.data)}`);
-
-    if (!paymentResponse.data || paymentResponse.data.status !== 'approved') {
-      console.error('Error o pago no aprobado en la respuesta de Mercado Pago:', paymentResponse.data);
-      return res.status(400).json({ error: 'El pago no fue aprobado o no se recibieron los datos esperados.' });
-    }
-
-    const metadata = paymentResponse.data.metadata;
+    const metadata = paymentData.metadata;
     console.log(`Metadata recibida:`, metadata);
-
-    if (!metadata || !metadata.eventId) {
-      console.error('Metadata incompleta o falta eventId.');
-      return res.status(400).json({ error: 'Datos de transacción incompletos.' });
-    }
 
     const transaction = new Transaction({
       eventId: metadata.eventId,
-      price: paymentResponse.data.transaction_amount,
+      price: paymentData.transaction_amount,
       quantity: 1,
       name: metadata.name,
       lastName: metadata.lastName,
@@ -188,16 +191,15 @@ app.get('/payment_success', async (req, res) => {
     });
 
     const savedTransaction = await transaction.save();
-    console.log(`✅ Transacción guardada con éxito con ID: ${savedTransaction._id}`);
+    console.log(`✅ Transacción guardada con éxito en la BD con ID: ${savedTransaction._id}`);
 
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${savedTransaction._id}`);
   } catch (error) {
-    console.error(`Error al intentar guardar la transacción:`, error);
-    // Aquí mejoramos cómo se logra el error
-    console.error(JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    console.error(`Error al procesar la solicitud /payment_success:`, error);
     res.status(500).send('Error interno al procesar el pago.');
   }
 });
+
 
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
