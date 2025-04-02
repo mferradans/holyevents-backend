@@ -53,7 +53,6 @@ app.get("/", (req, res) => {
     res.send("Soy el server:)");
 });
 
-// Obtener transacciones solo del admin logueado
 app.get('/api/transactions/stats', verifyToken, async (req, res) => {
   try {
     const stats = await Transaction.aggregate([
@@ -141,11 +140,9 @@ app.post('/create_preference', async (req, res) => {
       external_reference: savedTransaction._id.toString(),
     };
 
-    console.log(`🔍 Enviando metadata a Mercado Pago: ${JSON.stringify(body.metadata)}`);
     const preference = new Preference(client);
     const result = await preference.create({ body });
 
-    console.log(`✅ Preferencia creada con ID: ${result.id}`);
     res.json({ id: result.id });
   } catch (error) {
     console.error('Error en /create_preference:', error);
@@ -168,7 +165,6 @@ app.get('/payment_success', async (req, res) => {
     transaction.status = 'approved';
     await transaction.save();
 
-    console.log(`✅ Transacción actualizada con éxito en la BD con ID: ${transaction._id}`);
     res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
   } catch (error) {
     console.error(`Error al procesar la solicitud /payment_success: ${error}`);
@@ -290,7 +286,6 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
       menu: transaction.menu,
     });
   } catch (error) {
-    console.log("Error al verificar la transacción:", error);
     res.status(500).json({ success: false, message: 'Error al verificar la transacción.' });
   }
 });
