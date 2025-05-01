@@ -289,80 +289,83 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 app.post("/webhook", express.json(), async (req, res) => {
   console.log("📩 Webhook recibido:\n", JSON.stringify(req.body, null, 2));
 
-  try {
-    const topic = req.body.type;
-    const paymentId = req.body.data?.id;
+  const topic = req.body.type;
+  const paymentId = req.body.data?.id;
 
-    if (topic !== 'payment') {
-      console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
-      return res.sendStatus(200);
-    }
-
-    if (!paymentId) {
-      console.warn("⚠️ Falta paymentId en la notificación.");
-      return res.sendStatus(400);
-    }
-
-    // Consultar el pago en MP
-    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
-      }
-    });
-
-    const payment = await response.json();
-
-    console.log(`🔍 Respuesta de Mercado Pago para paymentId ${paymentId}:`);
-    console.log(JSON.stringify(payment, null, 2));
-
-    if (response.status === 404) {
-      console.error("❌ Error 404 - Pago no encontrado en Mercado Pago.");
-      return res.sendStatus(200);
-    }
-
-    if (payment.status !== 'approved') {
-      console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
-      return res.sendStatus(200);
-    }
-
-    const metadata = payment.metadata;
-
-    if (!metadata || !metadata.eventId || !metadata.email) {
-      console.warn("⚠️ Metadata incompleto en el pago recibido.");
-      return res.sendStatus(400);
-    }
-
-    const exists = await Transaction.findOne({
-      eventId: metadata.eventId,
-      email: metadata.email,
-      price: metadata.price
-    });
-
-    if (exists) {
-      console.log("🛑 Transacción ya existente. No se guarda duplicado.");
-      return res.sendStatus(200);
-    }
-
-    const newTransaction = new Transaction({
-      eventId: metadata.eventId,
-      price: metadata.price,
-      name: metadata.name,
-      lastName: metadata.lastName,
-      email: metadata.email,
-      tel: metadata.tel,
-      selectedMenus: metadata.selectedMenus,
-      transactionDate: new Date(),
-      verified: false
-    });
-
-    await newTransaction.save();
-    console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
-    res.sendStatus(200);
-  } catch (error) {
-    console.error("❌ Error procesando webhook:", error);
-    res.sendStatus(500);
+  if (topic !== 'payment') {
+    console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
+    return res.sendStatus(200);
   }
+
+  if (!paymentId) {
+    console.warn("⚠️ Falta paymentId en la notificación.");
+    return res.sendStatus(400);
+  }
+
+  // Esperar 2 segundos antes de consultar
+  setTimeout(async () => {
+    try {
+      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+        }
+      });
+
+      const payment = await response.json();
+
+      console.log(`🔍 Respuesta de Mercado Pago para paymentId ${paymentId}:`);
+      console.log(JSON.stringify(payment, null, 2));
+
+      if (response.status === 404) {
+        console.error("❌ Error 404 - Pago no encontrado en Mercado Pago.");
+        return;
+      }
+
+      if (payment.status !== 'approved') {
+        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
+        return;
+      }
+
+      const metadata = payment.metadata;
+
+      if (!metadata || !metadata.eventId || !metadata.email) {
+        console.warn("⚠️ Metadata incompleto en el pago recibido.");
+        return;
+      }
+
+      const exists = await Transaction.findOne({
+        eventId: metadata.eventId,
+        email: metadata.email,
+        price: metadata.price
+      });
+
+      if (exists) {
+        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
+        return;
+      }
+
+      const newTransaction = new Transaction({
+        eventId: metadata.eventId,
+        price: metadata.price,
+        name: metadata.name,
+        lastName: metadata.lastName,
+        email: metadata.email,
+        tel: metadata.tel,
+        selectedMenus: metadata.selectedMenus,
+        transactionDate: new Date(),
+        verified: false
+      });
+
+      await newTransaction.save();
+      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
+    } catch (error) {
+      console.error("❌ Error procesando webhook (retrasado):", error);
+    }
+  }, 2000); // esperar 2 segundos
+
+  res.sendStatus(200); // responder inmediatamente para que MP no reintente
 });
+
 
 
   
