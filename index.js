@@ -107,37 +107,39 @@ app.post('/create_preference', async (req, res) => {
   try {
     const event = await Event.findById(eventId).populate('createdBy');
     if (!event) {
-        return res.status(404).json({ error: 'Evento no encontrado' });
+      return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // Crear transacción en estado 'pending'
-    const newTransaction = new Transaction({
+    // Enviar datos por metadata, no guardar en DB todavía
+    const metadata = {
       eventId,
       price,
       name,
       lastName,
       email,
       tel,
-      selectedMenus,
-      status: 'pending', // Estado inicial
-    });
-
-    const savedTransaction = await newTransaction.save();
+      selectedMenus
+    };
 
     const body = {
-      items: [{ title: event.name, quantity: 1, unit_price: Number(price), currency_id: 'ARS' }],
+      items: [{
+        title: event.name,
+        quantity: 1,
+        unit_price: Number(price),
+        currency_id: 'ARS'
+      }],
       payer: { name, surname: lastName, email, tel },
-      metadata: { transactionId: savedTransaction._id }, // Incluye el ID de la transacción
+      metadata: metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.SERVER_URL}/payment_success`,
-        failure: `${process.env.SERVER_URL}/payment_failure`,
-        pending: `${process.env.SERVER_URL}/payment_pending`
+        success: `${process.env.CLIENT_URL}/payment_success`,
+        failure: `${process.env.CLIENT_URL}/payment_failure`,
+        pending: `${process.env.CLIENT_URL}/payment_pending`
       },
-      external_reference: savedTransaction._id.toString(),
+      notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
     };
 
     const preference = new Preference(client);
@@ -150,27 +152,15 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
-app.get('/payment_success', async (req, res) => {
-  const { external_reference } = req.query; // Usar 'external_reference' para obtener el ID de la transacción
 
-  try {
-    const transaction = await Transaction.findById(external_reference);
+app.get('/payment_success', (req, res) => {
+  const { preference_id } = req.query;
 
-    if (!transaction) {
-      console.error('Transacción no encontrada con el ID proporcionado.');
-      return res.status(404).send('Transacción no encontrada.');
-    }
-
-    // Confirmar y actualizar la transacción
-    transaction.status = 'approved';
-    await transaction.save();
-
-    res.redirect(`${process.env.CLIENT_URL}/payment_success?transactionId=${transaction._id}`);
-  } catch (error) {
-    console.error(`Error al procesar la solicitud /payment_success: ${error}`);
-    res.status(500).send('Error interno al procesar el pago.');
-  }
+  // Ya no intentamos actualizar ninguna transacción en este punto.
+  // Solo redireccionamos al frontend con el ID de la preferencia, si querés usarlo.
+  res.redirect(`${process.env.CLIENT_URL}/payment_success?preference_id=${preference_id}`);
 });
+
 
 
 
@@ -296,6 +286,68 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
   }
 });
 
+app.post("/webhook", express.json(), async (req, res) => {
+  try {
+    const paymentId = req.body.data?.id;
+    if (!paymentId) {
+      console.warn("Falta paymentId en la notificación");
+      return res.sendStatus(400);
+    }
+
+    // Consultar el pago en Mercado Pago
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+      }
+    });
+
+    const payment = await response.json();
+
+    if (payment.status !== 'approved') {
+      console.log(`El pago ${paymentId} no fue aprobado (estado: ${payment.status}).`);
+      return res.sendStatus(200); // OK, pero no hacemos nada
+    }
+
+    const metadata = payment.metadata;
+    if (!metadata || !metadata.eventId || !metadata.email) {
+      console.warn("Faltan datos en el metadata del pago.");
+      return res.sendStatus(400);
+    }
+
+    // Validar si ya existe (por evento + email + monto)
+    const exists = await Transaction.findOne({
+      eventId: metadata.eventId,
+      email: metadata.email,
+      price: metadata.price,
+    });
+
+    if (exists) {
+      console.log("Ya existe esta transacción, no se duplica.");
+      return res.sendStatus(200);
+    }
+
+    // Crear nueva transacción
+    const newTransaction = new Transaction({
+      eventId: metadata.eventId,
+      price: metadata.price,
+      name: metadata.name,
+      lastName: metadata.lastName,
+      email: metadata.email,
+      tel: metadata.tel,
+      selectedMenus: metadata.selectedMenus,
+      status: 'approved', // opcional si querés agregar este campo al schema
+      transactionDate: new Date(),
+      verified: false
+    });
+
+    await newTransaction.save();
+    console.log(`Transacción guardada para ${metadata.email}`);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Error procesando webhook:", error);
+    res.sendStatus(500);
+  }
+});
 
   
 app.get("/payment_failure", (req, res) => {
