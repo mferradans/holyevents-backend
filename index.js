@@ -287,14 +287,23 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 });
 
 app.post("/webhook", express.json(), async (req, res) => {
+  console.log("📩 Webhook recibido:\n", JSON.stringify(req.body, null, 2));
+
   try {
+    const topic = req.body.type;
     const paymentId = req.body.data?.id;
+
+    if (topic !== 'payment') {
+      console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
+      return res.sendStatus(200);
+    }
+
     if (!paymentId) {
-      console.warn("Falta paymentId en la notificación");
+      console.warn("⚠️ Falta paymentId en la notificación.");
       return res.sendStatus(400);
     }
 
-    // Consultar el pago en Mercado Pago
+    // Consultar el pago en MP
     const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: {
         Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
@@ -303,30 +312,37 @@ app.post("/webhook", express.json(), async (req, res) => {
 
     const payment = await response.json();
 
-    if (payment.status !== 'approved') {
-      console.log(`El pago ${paymentId} no fue aprobado (estado: ${payment.status}).`);
-      return res.sendStatus(200); // OK, pero no hacemos nada
-    }
+    console.log(`🔍 Respuesta de Mercado Pago para paymentId ${paymentId}:`);
+    console.log(JSON.stringify(payment, null, 2));
 
-    const metadata = payment.metadata;
-    if (!metadata || !metadata.eventId || !metadata.email) {
-      console.warn("Faltan datos en el metadata del pago.");
-      return res.sendStatus(400);
-    }
-
-    // Validar si ya existe (por evento + email + monto)
-    const exists = await Transaction.findOne({
-      eventId: metadata.eventId,
-      email: metadata.email,
-      price: metadata.price,
-    });
-
-    if (exists) {
-      console.log("Ya existe esta transacción, no se duplica.");
+    if (response.status === 404) {
+      console.error("❌ Error 404 - Pago no encontrado en Mercado Pago.");
       return res.sendStatus(200);
     }
 
-    // Crear nueva transacción
+    if (payment.status !== 'approved') {
+      console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
+      return res.sendStatus(200);
+    }
+
+    const metadata = payment.metadata;
+
+    if (!metadata || !metadata.eventId || !metadata.email) {
+      console.warn("⚠️ Metadata incompleto en el pago recibido.");
+      return res.sendStatus(400);
+    }
+
+    const exists = await Transaction.findOne({
+      eventId: metadata.eventId,
+      email: metadata.email,
+      price: metadata.price
+    });
+
+    if (exists) {
+      console.log("🛑 Transacción ya existente. No se guarda duplicado.");
+      return res.sendStatus(200);
+    }
+
     const newTransaction = new Transaction({
       eventId: metadata.eventId,
       price: metadata.price,
@@ -335,19 +351,19 @@ app.post("/webhook", express.json(), async (req, res) => {
       email: metadata.email,
       tel: metadata.tel,
       selectedMenus: metadata.selectedMenus,
-      status: 'approved', // opcional si querés agregar este campo al schema
       transactionDate: new Date(),
       verified: false
     });
 
     await newTransaction.save();
-    console.log(`Transacción guardada para ${metadata.email}`);
+    console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     res.sendStatus(200);
   } catch (error) {
-    console.error("Error procesando webhook:", error);
+    console.error("❌ Error procesando webhook:", error);
     res.sendStatus(500);
   }
 });
+
 
   
 app.get("/payment_failure", (req, res) => {
