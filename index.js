@@ -113,7 +113,6 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // Enviar datos por metadata, no guardar en DB todavía
     const metadata = {
       eventId,
       price,
@@ -121,7 +120,8 @@ app.post('/create_preference', async (req, res) => {
       lastName,
       email,
       tel,
-      selectedMenus
+      selectedMenus,
+      accessToken // ✅ guardamos el token usado para después consultarlo en el webhook
     };
 
     const body = {
@@ -132,7 +132,7 @@ app.post('/create_preference', async (req, res) => {
         currency_id: 'ARS'
       }],
       payer: { name, surname: lastName, email, tel },
-      metadata: metadata,
+      metadata,
       auto_return: 'approved',
       back_urls: {
         success: `${process.env.CLIENT_URL}/payment_success`,
@@ -151,6 +151,7 @@ app.post('/create_preference', async (req, res) => {
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 app.get('/payment_success', (req, res) => {
@@ -286,6 +287,7 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
   }
 });
 
+
 app.post("/webhook", express.json(), async (req, res) => {
   console.log("📩 Webhook recibido:\n", JSON.stringify(req.body, null, 2));
 
@@ -302,69 +304,81 @@ app.post("/webhook", express.json(), async (req, res) => {
     return res.sendStatus(400);
   }
 
-  // Esperar 2 segundos antes de consultar
-  setTimeout(async () => {
-    try {
-      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
-        }
-      });
-
-      const payment = await response.json();
-
-      console.log(`🔍 Respuesta de Mercado Pago para paymentId ${paymentId}:`);
-      console.log(JSON.stringify(payment, null, 2));
-
-      if (response.status === 404) {
-        console.error("❌ Error 404 - Pago no encontrado en Mercado Pago.");
-        return;
+  try {
+    // ✅ Consultamos primero con un token genérico para acceder a metadata
+    const defaultToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    let paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        Authorization: `Bearer ${defaultToken}`
       }
+    });
 
-      if (payment.status !== 'approved') {
-        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
-        return;
-      }
+    let payment = await paymentResponse.json();
 
-      const metadata = payment.metadata;
+    console.log(`🔍 Respuesta inicial para paymentId ${paymentId}:\n`, JSON.stringify(payment, null, 2));
 
-      if (!metadata || !metadata.eventId || !metadata.email) {
-        console.warn("⚠️ Metadata incompleto en el pago recibido.");
-        return;
-      }
-
-      const exists = await Transaction.findOne({
-        eventId: metadata.eventId,
-        email: metadata.email,
-        price: metadata.price
-      });
-
-      if (exists) {
-        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
-        return;
-      }
-
-      const newTransaction = new Transaction({
-        eventId: metadata.eventId,
-        price: metadata.price,
-        name: metadata.name,
-        lastName: metadata.lastName,
-        email: metadata.email,
-        tel: metadata.tel,
-        selectedMenus: metadata.selectedMenus,
-        transactionDate: new Date(),
-        verified: false
-      });
-
-      await newTransaction.save();
-      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
-    } catch (error) {
-      console.error("❌ Error procesando webhook (retrasado):", error);
+    // Si 404 o falta metadata, abortamos
+    if (paymentResponse.status === 404 || !payment.metadata) {
+      console.error("❌ No se encontró el pago o no tiene metadata.");
+      return res.sendStatus(200);
     }
-  }, 2000); // esperar 2 segundos
 
-  res.sendStatus(200); // responder inmediatamente para que MP no reintente
+    // ✅ Ahora, obtenemos el token correcto desde metadata
+    const accessTokenFromMetadata = payment.metadata.accessToken || defaultToken;
+
+    // Re-consultar con el token correcto
+    paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        Authorization: `Bearer ${accessTokenFromMetadata}`
+      }
+    });
+
+    payment = await paymentResponse.json();
+
+    if (paymentResponse.status === 404 || payment.status !== 'approved') {
+      console.warn(`ℹ️ Pago ${paymentId} no aprobado o no encontrado en segundo intento (estado: ${payment.status}).`);
+      return res.sendStatus(200);
+    }
+
+    const metadata = payment.metadata;
+
+    if (!metadata.eventId || !metadata.email) {
+      console.warn("⚠️ Metadata incompleto en el pago.");
+      return res.sendStatus(400);
+    }
+
+    const exists = await Transaction.findOne({
+      eventId: metadata.eventId,
+      email: metadata.email,
+      price: metadata.price
+    });
+
+    if (exists) {
+      console.log("🛑 Transacción ya registrada. No se duplica.");
+      return res.sendStatus(200);
+    }
+
+    const newTransaction = new Transaction({
+      eventId: metadata.eventId,
+      price: metadata.price,
+      name: metadata.name,
+      lastName: metadata.lastName,
+      email: metadata.email,
+      tel: metadata.tel,
+      selectedMenus: metadata.selectedMenus,
+      transactionDate: new Date(),
+      verified: false
+    });
+
+    await newTransaction.save();
+    console.log(`✅ Transacción guardada para ${metadata.email}`);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("❌ Error al procesar webhook:", error);
+    res.sendStatus(500);
+  }
 });
+
 
 
 
