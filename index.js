@@ -343,10 +343,10 @@ app.post("/webhook", express.json(), async (req, res) => {
 
       const metadata = payment.metadata;
 
-      if (!metadata || !metadata.eventId || !metadata.email) {
+      if (!metadata || !metadata.event_id || !metadata.email) {
         console.warn("⚠️ Metadata incompleto en el pago recibido.");
         return;
-      }
+      }      
 
       const exists = await Transaction.findOne({
         eventId: metadata.eventId,
@@ -360,16 +360,16 @@ app.post("/webhook", express.json(), async (req, res) => {
       }
 
       const newTransaction = new Transaction({
-        eventId: metadata.eventId,
+        eventId: metadata.event_id,
         price: metadata.price,
         name: metadata.name,
-        lastName: metadata.lastName,
+        lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selectedMenus,
+        selectedMenus: metadata.selected_menus,
         transactionDate: new Date(),
         verified: false
-      });
+      });      
 
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
