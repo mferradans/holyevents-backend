@@ -113,16 +113,27 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    const metadata = {
-      eventId,
-      price,
-      name,
-      lastName,
-      email,
-      tel,
-      selectedMenus,
-      accessToken // ✅ guardamos el token usado para después consultarlo en el webhook
-    };
+// Convertimos los índices en fechas reales
+const fixedSelectedMenus = {};
+event.menuMoments.forEach((moment, index) => {
+  const fecha = moment.dateTime;
+  const selected = selectedMenus[index];
+  if (selected) {
+    fixedSelectedMenus[fecha] = selected;
+  }
+});
+
+const metadata = {
+  eventId,
+  price,
+  name,
+  lastName,
+  email,
+  tel,
+  selectedMenus: fixedSelectedMenus,
+  accessToken
+};
+
 
     const body = {
       items: [{
@@ -135,7 +146,7 @@ app.post('/create_preference', async (req, res) => {
       metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success`,
+        success: `${process.env.CLIENT_URL}/payment_success?preference_id=${event._id}`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
       },
