@@ -112,25 +112,16 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // 🔁 Convertir índices numéricos a fechas reales
-    const fixedSelectedMenus = {};
-    for (const index in selectedMenus) {
-      const moment = event.menuMoments[index];
-      if (moment) {
-        const fecha = moment.dateTime;
-        fixedSelectedMenus[fecha] = selectedMenus[index];
-      }
-    }
-
+    // FUNCIONAL: usamos los índices como claves (lo mismo que se genera desde el frontend)
     const metadata = {
-      event_id: eventId, // 👈 importante: usar "event_id" para que coincida con webhook
+      eventId,
       price,
       name,
-      last_name: lastName,
+      lastName,
       email,
       tel,
-      selected_menus: fixedSelectedMenus,
-      access_token: accessToken
+      selectedMenus,
+      accessToken
     };
 
     const body = {
@@ -160,6 +151,7 @@ app.post('/create_preference', async (req, res) => {
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 
@@ -307,7 +299,6 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   setTimeout(async () => {
     try {
-      // Consulta inicial
       const tempRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
@@ -315,27 +306,24 @@ app.post("/webhook", express.json(), async (req, res) => {
       });
       const tempPayment = await tempRes.json();
 
-      const token = tempPayment?.metadata?.access_token || process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const token = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-      // Consulta final
-      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
+      const resFinal = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      const payment = await response.json();
+      const payment = await resFinal.json();
 
-      if (response.status === 404 || payment.message === 'Payment not found') return;
+      if (resFinal.status === 404 || payment.message === 'Payment not found') return;
       if (payment.status !== 'approved') return;
 
       const metadata = payment.metadata;
       console.log("🧾 Metadata completa:", metadata);
-      console.log("📋 Menús seleccionados:", metadata.selected_menus);
+      console.log("📋 Menús seleccionados:", metadata.selectedMenus);
 
-      if (!metadata || !metadata.event_id || !metadata.email) return;
+      if (!metadata || !metadata.eventId || !metadata.email) return;
 
       const exists = await Transaction.findOne({
-        eventId: metadata.event_id,
+        eventId: metadata.eventId,
         email: metadata.email,
         price: metadata.price
       });
@@ -343,16 +331,16 @@ app.post("/webhook", express.json(), async (req, res) => {
       if (exists) return;
 
       const newTransaction = new Transaction({
-        eventId: metadata.event_id,
+        eventId: metadata.eventId,
         price: metadata.price,
         name: metadata.name,
-        lastName: metadata.last_name,
+        lastName: metadata.lastName,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selected_menus,
+        selectedMenus: metadata.selectedMenus,
         transactionDate: new Date(),
         verified: false,
-        metadataType: 'mercadopago' // 👈 importante para distinguir tipo de venta
+        metadataType: 'mercadopago'
       });
 
       await newTransaction.save();
@@ -364,6 +352,7 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   res.sendStatus(200);
 });
+
 
 
   
