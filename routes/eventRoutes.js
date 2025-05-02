@@ -277,6 +277,10 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
     const { name, lastName, email, tel, selectedMenus, metadataType = 'manual' } = req.body;
     const { eventId } = req.params;
 
+    if (!name || !lastName || !email || !tel) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
     const transaction = new Transaction({
       eventId,
       name,
@@ -291,9 +295,10 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
     await transaction.save();
     res.status(201).json({ message: 'Venta manual registrada correctamente' });
   } catch (error) {
-    console.error('Error al guardar venta manual:', error);
-    res.status(500).json({ error: 'Error al registrar la venta manual' });
+    console.error('❌ Error al guardar venta manual:', error);
+    res.status(500).json({ error: error.message || 'Error al registrar la venta manual' });
   }
 });
+
 
 export default router;
