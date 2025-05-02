@@ -299,27 +299,21 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 
 
 app.post("/webhook", express.json(), async (req, res) => {
-  console.log("📩 Webhook recibido:\n", JSON.stringify(req.body, null, 2));
-
   const topic = req.body.type;
   const paymentId = req.body.data?.id;
 
   if (topic !== 'payment') {
-    console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
     return res.sendStatus(200);
   }
 
   if (!paymentId) {
-    console.warn("⚠️ Falta paymentId en la notificación.");
     return res.sendStatus(400);
   }
 
-  console.log(`⏳ Esperando 6 segundos para consultar paymentId: ${paymentId}`);
 
   setTimeout(async () => {
     try {
       // 1. Consulta inicial para intentar obtener el token dinámico desde metadata
-      console.log("🔄 Primera consulta a MP con token de entorno...");
       const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
@@ -330,7 +324,6 @@ app.post("/webhook", express.json(), async (req, res) => {
       const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
       // 2. Consulta final con token correcto
-      console.log(`🔄 Segunda consulta a MP con token dinámico (${dynamicToken === process.env.MERCADOPAGO_ACCESS_TOKEN ? "token de entorno" : "token del vendedor"})...`);
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${dynamicToken}`
@@ -339,23 +332,18 @@ app.post("/webhook", express.json(), async (req, res) => {
 
       const payment = await response.json();
 
-      console.log(`🔍 Respuesta final para paymentId ${paymentId}:`);
-      console.log(JSON.stringify(payment, null, 2));
 
       if (response.status === 404 || payment.message === 'Payment not found') {
-        console.error("❌ No se encontró el pago o aún no está disponible en la API de Mercado Pago.");
         return;
       }
 
       if (payment.status !== 'approved') {
-        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
         return;
       }
 
       const metadata = payment.metadata;
 
       if (!metadata || !metadata.event_id || !metadata.email) {
-        console.warn("⚠️ Metadata incompleto en el pago recibido.");
         return;
       }      
 
@@ -366,7 +354,6 @@ app.post("/webhook", express.json(), async (req, res) => {
       });
 
       if (exists) {
-        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
         return;
       }
 
@@ -383,9 +370,7 @@ app.post("/webhook", express.json(), async (req, res) => {
       });      
 
       await newTransaction.save();
-      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
-      console.error("❌ Error procesando webhook:", error);
     }
   }, 6000); // ⏱️ Aumentamos la espera a 6 segundos
 
