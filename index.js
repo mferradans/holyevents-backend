@@ -112,27 +112,25 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-// Usamos directamente las fechas como claves
-const fixedSelectedMenus = {};
-for (const key in selectedMenus) {
-  const selected = selectedMenus[key];
-  const moment = event.menuMoments[key];
-  if (moment && selected) {
-    const fecha = moment.dateTime;
-    fixedSelectedMenus[fecha] = selected;
-  }
-}
-
+    // 🔁 Convertir índices numéricos a fechas reales
+    const fixedSelectedMenus = {};
+    for (const index in selectedMenus) {
+      const moment = event.menuMoments[index];
+      if (moment) {
+        const fecha = moment.dateTime;
+        fixedSelectedMenus[fecha] = selectedMenus[index];
+      }
+    }
 
     const metadata = {
-      event_id: eventId, // 👈 usamos snake_case como Mercado Pago respeta
+      event_id: eventId, // 👈 importante: usar "event_id" para que coincida con webhook
       price,
       name,
       last_name: lastName,
       email,
       tel,
       selected_menus: fixedSelectedMenus,
-      accessToken // para reconsulta si hace falta
+      access_token: accessToken
     };
 
     const body = {
@@ -146,7 +144,7 @@ for (const key in selectedMenus) {
       metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success?event_id=${event._id}`,
+        success: `${process.env.CLIENT_URL}/payment_success?preference_id=${event._id}`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
       },
@@ -158,10 +156,11 @@ for (const key in selectedMenus) {
 
     res.json({ id: result.id });
   } catch (error) {
-    console.error('Error en /create_preference:', error);
+    console.error('❌ Error en /create_preference:', error);
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 
@@ -308,28 +307,28 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   setTimeout(async () => {
     try {
-      const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      // Consulta inicial
+      const tempRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
         }
       });
+      const tempPayment = await tempRes.json();
 
-      const tempPayment = await tempResponse.json();
-      const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const token = tempPayment?.metadata?.access_token || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
+      // Consulta final
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
-          Authorization: `Bearer ${dynamicToken}`
+          Authorization: `Bearer ${token}`
         }
       });
-
       const payment = await response.json();
 
       if (response.status === 404 || payment.message === 'Payment not found') return;
       if (payment.status !== 'approved') return;
 
       const metadata = payment.metadata;
-
       console.log("🧾 Metadata completa:", metadata);
       console.log("📋 Menús seleccionados:", metadata.selected_menus);
 
@@ -353,7 +352,7 @@ app.post("/webhook", express.json(), async (req, res) => {
         selectedMenus: metadata.selected_menus,
         transactionDate: new Date(),
         verified: false,
-        metadataType: 'mercadopago'
+        metadataType: 'mercadopago' // 👈 importante para distinguir tipo de venta
       });
 
       await newTransaction.save();
@@ -365,7 +364,6 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   res.sendStatus(200);
 });
-
 
 
   
