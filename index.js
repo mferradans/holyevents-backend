@@ -157,8 +157,7 @@ app.post('/create_preference', async (req, res) => {
 app.get('/payment_success', (req, res) => {
   const { preference_id } = req.query;
 
-  // Ya no intentamos actualizar ninguna transacción en este punto.
-  // Solo redireccionamos al frontend con el ID de la preferencia, si querés usarlo.
+
   res.redirect(`${process.env.CLIENT_URL}/payment_success?preference_id=${preference_id}`);
 });
 
@@ -295,74 +294,88 @@ app.post("/webhook", express.json(), async (req, res) => {
   const paymentId = req.body.data?.id;
 
   if (topic !== 'payment') {
-    console.log(`⚠️ Tipo ignorado: "${topic}"`);
+    console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
     return res.sendStatus(200);
   }
 
   if (!paymentId) {
-    console.warn("⚠️ No hay paymentId.");
+    console.warn("⚠️ Falta paymentId en la notificación.");
     return res.sendStatus(400);
   }
 
-  try {
-    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+  setTimeout(async () => {
+    try {
+      // Primero pedimos el pago sin token (para sacar metadata)
+      const firstResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+        }
+      });
+
+      const payment = await firstResponse.json();
+
+      console.log(`🔍 Respuesta inicial para paymentId ${paymentId}:`);
+      console.log(JSON.stringify(payment, null, 2));
+
+      if (firstResponse.status === 404 || !payment.metadata || !payment.metadata.accessToken) {
+        console.log("❌ No se encontró el pago o no tiene metadata con accessToken.");
+        return;
       }
-    });
 
-    const payment = await response.json();
+      // Ahora volvemos a pedir el pago pero con el token real del vendedor
+      const vendorToken = payment.metadata.accessToken;
+      const finalResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: {
+          Authorization: `Bearer ${vendorToken}`
+        }
+      });
 
-    if (response.status === 404) {
-      console.warn("❌ Pago aún no disponible. Mercado Pago reintentará.");
-      return res.sendStatus(500); // No respondemos 200, así MP reintenta
+      const finalPayment = await finalResponse.json();
+
+      if (finalPayment.status !== 'approved') {
+        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${finalPayment.status}).`);
+        return;
+      }
+
+      const metadata = finalPayment.metadata;
+
+      if (!metadata || !metadata.eventId || !metadata.email) {
+        console.warn("⚠️ Metadata incompleto.");
+        return;
+      }
+
+      const exists = await Transaction.findOne({
+        eventId: metadata.eventId,
+        email: metadata.email,
+        price: metadata.price
+      });
+
+      if (exists) {
+        console.log("🛑 Transacción ya registrada. No se duplica.");
+        return;
+      }
+
+      const newTransaction = new Transaction({
+        eventId: metadata.eventId,
+        price: metadata.price,
+        name: metadata.name,
+        lastName: metadata.lastName,
+        email: metadata.email,
+        tel: metadata.tel,
+        selectedMenus: metadata.selectedMenus,
+        transactionDate: new Date(),
+        verified: false
+      });
+
+      await newTransaction.save();
+      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
+    } catch (error) {
+      console.error("❌ Error procesando webhook:", error);
     }
+  }, 2000);
 
-    if (payment.status !== 'approved') {
-      console.log(`ℹ️ Pago no aprobado: ${payment.status}`);
-      return res.sendStatus(200);
-    }
-
-    const metadata = payment.metadata;
-
-    if (!metadata || !metadata.eventId || !metadata.email) {
-      console.warn("⚠️ Metadata incompleta.");
-      return res.sendStatus(400);
-    }
-
-    const exists = await Transaction.findOne({
-      eventId: metadata.eventId,
-      email: metadata.email,
-      price: metadata.price
-    });
-
-    if (exists) {
-      console.log("🛑 Ya existe esta transacción.");
-      return res.sendStatus(200);
-    }
-
-    const newTransaction = new Transaction({
-      eventId: metadata.eventId,
-      price: metadata.price,
-      name: metadata.name,
-      lastName: metadata.lastName,
-      email: metadata.email,
-      tel: metadata.tel,
-      selectedMenus: metadata.selectedMenus,
-      transactionDate: new Date(),
-      verified: false
-    });
-
-    await newTransaction.save();
-    console.log(`✅ Transacción guardada para ${metadata.email}`);
-    return res.sendStatus(200);
-  } catch (error) {
-    console.error("❌ Error inesperado:", error);
-    return res.sendStatus(500);
-  }
+  res.sendStatus(200);
 });
-
-
 
 
 
