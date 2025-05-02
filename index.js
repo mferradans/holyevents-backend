@@ -112,15 +112,17 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // 🔧 Convertimos los índices en fechas reales (como string)
-    const fixedSelectedMenus = {};
-    event.menuMoments.forEach((moment, index) => {
-      const fecha = moment.dateTime;
-      const selected = selectedMenus[index];
-      if (selected) {
-        fixedSelectedMenus[fecha] = selected;
-      }
-    });
+// Usamos directamente las fechas como claves
+const fixedSelectedMenus = {};
+for (const key in selectedMenus) {
+  const selected = selectedMenus[key];
+  const moment = event.menuMoments[key];
+  if (moment && selected) {
+    const fecha = moment.dateTime;
+    fixedSelectedMenus[fecha] = selected;
+  }
+}
+
 
     const metadata = {
       event_id: eventId, // 👈 usamos snake_case como Mercado Pago respeta
