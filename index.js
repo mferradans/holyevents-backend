@@ -303,58 +303,61 @@ app.post("/webhook", express.json(), async (req, res) => {
     return res.sendStatus(400);
   }
 
+  console.log(`⏳ Esperando 6 segundos para consultar paymentId: ${paymentId}`);
   setTimeout(async () => {
     try {
+      console.log("🔄 Primera consulta a MP con token de entorno...");
       const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
         }
       });
-  
+
       const tempPayment = await tempResponse.json();
-  
-      // Si el metadata trae un token mejor, reconsultar con ese token:
       const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
-  
+
+      console.log(`🔄 Segunda consulta a MP con token dinámico (${dynamicToken === process.env.MERCADOPAGO_ACCESS_TOKEN ? 'usando token de entorno' : 'usando token del vendedor'})...`);
+
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${dynamicToken}`
         }
       });
-  
+
       const payment = await response.json();
-  
+
       console.log(`🔍 Respuesta final para paymentId ${paymentId}:`);
       console.log(JSON.stringify(payment, null, 2));
-  
+
       if (response.status === 404 || payment.message === 'Payment not found') {
-        console.error("❌ No se encontró el pago o no tiene metadata con accessToken.");
+        console.error("❌ No se encontró el pago o aún no está disponible en la API de Mercado Pago.");
         return;
       }
-  
+
       if (payment.status !== 'approved') {
-        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
+        console.log(`ℹ️ Pago ${paymentId} recibido pero no está aprobado (estado: ${payment.status}).`);
         return;
       }
-  
+
       const metadata = payment.metadata;
-  
       if (!metadata || !metadata.eventId || !metadata.email) {
-        console.warn("⚠️ Metadata incompleto en el pago recibido.");
+        console.warn("⚠️ Metadata incompleto. Faltan eventId o email.");
         return;
       }
-  
+
+      console.log("🔎 Buscando si ya existe una transacción con ese email, eventId y precio...");
       const exists = await Transaction.findOne({
         eventId: metadata.eventId,
         email: metadata.email,
         price: metadata.price
       });
-  
+
       if (exists) {
-        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
+        console.log("🛑 Transacción ya registrada anteriormente. No se guarda duplicado.");
         return;
       }
-  
+
+      console.log("💾 Guardando nueva transacción en MongoDB...");
       const newTransaction = new Transaction({
         eventId: metadata.eventId,
         price: metadata.price,
@@ -366,17 +369,17 @@ app.post("/webhook", express.json(), async (req, res) => {
         transactionDate: new Date(),
         verified: false
       });
-  
+
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
-      console.error("❌ Error procesando webhook:", error);
+      console.error("❌ Error procesando el webhook:\n", error);
     }
-  }, 2000);
-  
+  }, 6000); // esperar 6 segundos
 
-  res.sendStatus(200);
+  res.sendStatus(200); // responder rápido para que MP no reintente
 });
+
   
 app.get("/payment_failure", (req, res) => {
     res.send("El pago ha fallado. Inténtalo nuevamente.");
