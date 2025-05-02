@@ -113,44 +113,38 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-// Convertimos los índices en fechas reales
-const fixedSelectedMenus = {};
-event.menuMoments.forEach((moment, index) => {
-  const fecha = moment.dateTime;
-  const selected = selectedMenus[index];
-  if (selected) {
-    fixedSelectedMenus[fecha] = selected;
-  }
-});
+    const selectedMenusClean = {};
+    for (const key in selectedMenus) {
+      selectedMenusClean[String(key)] = selectedMenus[key];
+    }
 
-const metadata = {
-  eventId,
-  price,
-  name,
-  lastName,
-  email,
-  tel,
-  selectedMenus: fixedSelectedMenus,
-  accessToken
-};
-
+    const metadata = {
+      eventId,
+      price,
+      name,
+      lastName,
+      email,
+      tel,
+      selectedMenus: selectedMenusClean,
+      accessToken,
+    };
 
     const body = {
       items: [{
         title: event.name,
         quantity: 1,
         unit_price: Number(price),
-        currency_id: 'ARS'
+        currency_id: 'ARS',
       }],
-      payer: { name, surname: lastName, email, tel },
+      payer: { name, surname: lastName, email },
       metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success?preference_id=${event._id}`,
+        success: `${process.env.CLIENT_URL}/payment_success?eventId=${event._id}`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
       },
-      notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
+      notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`,
     };
 
     const preference = new Preference(client);
@@ -162,6 +156,7 @@ const metadata = {
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 
@@ -299,31 +294,32 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 
 
 app.post("/webhook", express.json(), async (req, res) => {
+  console.log("📩 Webhook recibido:\n", JSON.stringify(req.body, null, 2));
+
   const topic = req.body.type;
   const paymentId = req.body.data?.id;
 
   if (topic !== 'payment') {
+    console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
     return res.sendStatus(200);
   }
 
   if (!paymentId) {
+    console.warn("⚠️ Falta paymentId en la notificación.");
     return res.sendStatus(400);
   }
 
-
   setTimeout(async () => {
     try {
-      // 1. Consulta inicial para intentar obtener el token dinámico desde metadata
       const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
         }
       });
-      const tempPayment = await tempResponse.json();
 
+      const tempPayment = await tempResponse.json();
       const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-      // 2. Consulta final con token correcto
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
           Authorization: `Bearer ${dynamicToken}`
@@ -332,20 +328,30 @@ app.post("/webhook", express.json(), async (req, res) => {
 
       const payment = await response.json();
 
+      console.log(`🔍 Respuesta final para paymentId ${paymentId}:`);
+      console.log(JSON.stringify(payment, null, 2));
 
       if (response.status === 404 || payment.message === 'Payment not found') {
+        console.error("❌ No se encontró el pago o aún no está disponible en la API de Mercado Pago.");
         return;
       }
 
       if (payment.status !== 'approved') {
+        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
         return;
       }
 
       const metadata = payment.metadata;
 
-      if (!metadata || !metadata.event_id || !metadata.email) {
+      if (!metadata || !metadata.eventId || !metadata.email || !metadata.selectedMenus) {
+        console.warn("⚠️ Metadata incompleta en el pago recibido.");
         return;
-      }      
+      }
+
+      const selectedMenusClean = {};
+      for (const key in metadata.selectedMenus) {
+        selectedMenusClean[String(key)] = metadata.selectedMenus[key];
+      }
 
       const exists = await Transaction.findOne({
         eventId: metadata.eventId,
@@ -354,28 +360,33 @@ app.post("/webhook", express.json(), async (req, res) => {
       });
 
       if (exists) {
+        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
         return;
       }
 
       const newTransaction = new Transaction({
-        eventId: metadata.event_id,
+        eventId: metadata.eventId,
         price: metadata.price,
         name: metadata.name,
-        lastName: metadata.last_name,
+        lastName: metadata.lastName,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selected_menus,
+        selectedMenus: selectedMenusClean,
         transactionDate: new Date(),
-        verified: false
-      });      
+        verified: false,
+        metadataType: 'mercadopago'
+      });
 
       await newTransaction.save();
+      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
+      console.error("❌ Error procesando webhook:", error);
     }
-  }, 6000); // ⏱️ Aumentamos la espera a 6 segundos
+  }, 6000);
 
   res.sendStatus(200);
 });
+
 
 
   
