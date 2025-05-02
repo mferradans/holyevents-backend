@@ -113,30 +113,18 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-// Convertimos los índices en fechas reales
-const fixedSelectedMenus = {};
-event.menuMoments.forEach((moment, index) => {
-  const fecha = moment.dateTime;
-  const selected = selectedMenus[index];
-  if (selected) {
-    fixedSelectedMenus[fecha] = selected;
-  }
-});
-
-// Usamos directamente los índices del frontend
-const metadata = {
-  event_id: eventId,
-  price,
-  name,
-  last_name: lastName,
-  email,
-  tel,
-  selected_menus: selectedMenus, // ✅ Este es el objeto tal como viene del frontend
-  access_token: accessToken,
-  metadataType: 'mercadopago'
-};
-
-
+    // Metadata en formato crudo, se interpreta en el webhook
+    const metadata = {
+      event_id: eventId,
+      price,
+      name,
+      last_name: lastName,
+      email,
+      tel,
+      selected_menus: selectedMenus, // ✅ tal como viene del frontend (índices)
+      access_token: accessToken,
+      metadata_type: 'mercadopago'
+    };
 
     const body = {
       items: [{
@@ -149,7 +137,7 @@ const metadata = {
       metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success?preference_id=${event._id}`,
+        success: `${process.env.CLIENT_URL}/payment_success?event_id=${event._id}`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
       },
@@ -161,10 +149,11 @@ const metadata = {
 
     res.json({ id: result.id });
   } catch (error) {
-    console.error('Error en /create_preference:', error);
+    console.error('❌ Error en /create_preference:', error);
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 
@@ -305,81 +294,54 @@ app.post("/webhook", express.json(), async (req, res) => {
   const topic = req.body.type;
   const paymentId = req.body.data?.id;
 
-  if (topic !== 'payment') {
-    return res.sendStatus(200);
-  }
-
-  if (!paymentId) {
-    return res.sendStatus(400);
-  }
-
+  if (topic !== 'payment') return res.sendStatus(200);
+  if (!paymentId) return res.sendStatus(400);
 
   setTimeout(async () => {
     try {
-      // 1. Consulta inicial para intentar obtener el token dinámico desde metadata
       console.log("🔄 Primera consulta a MP con token de entorno...");
       const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
-        }
+        headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
       });
       const tempPayment = await tempResponse.json();
 
-      const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const token = tempPayment?.metadata?.access_token || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-      // 2. Consulta final con token correcto
-      console.log(`🔄 Segunda consulta a MP con token dinámico (${dynamicToken === process.env.MERCADOPAGO_ACCESS_TOKEN ? "token de entorno" : "token del vendedor"})...`);
+      console.log("🔄 Segunda consulta a MP con token dinámico (token de entorno)...");
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: {
-          Authorization: `Bearer ${dynamicToken}`
-        }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       const payment = await response.json();
+      console.log("🔍 Respuesta final para paymentId", paymentId + ":\n", JSON.stringify(payment, null, 2));
 
-      console.log(`🔍 Respuesta final para paymentId ${paymentId}:`);
-      console.log(JSON.stringify(payment, null, 2));
-
-      if (response.status === 404 || payment.message === 'Payment not found') {
-        console.error("❌ No se encontró el pago o aún no está disponible en la API de Mercado Pago.");
-        return;
-      }
-
-      if (payment.status !== 'approved') {
-        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
-        return;
-      }
+      if (payment.status !== 'approved') return;
 
       const metadata = payment.metadata;
+      if (!metadata || !metadata.event_id || !metadata.email) return;
 
-      if (!metadata || !metadata.event_id || !metadata.email) {
-        console.warn("⚠️ Metadata incompleto en el pago recibido.");
-        return;
-      }      
+      const event = await Event.findById(metadata.event_id);
+      if (!event || !Array.isArray(event.menuMoments)) return;
 
+      // Convertimos los índices en fechas reales
+      const rawMenus = metadata.selected_menus || {};
+      const processedMenus = {};
+
+      for (const index in rawMenus) {
+        const moment = event.menuMoments[index];
+        if (moment) {
+          processedMenus[moment.dateTime] = rawMenus[index];
+        }
+      }
+
+      // Verificamos si ya existe la transacción
       const exists = await Transaction.findOne({
-        eventId: metadata.eventId,
+        eventId: metadata.event_id,
         email: metadata.email,
         price: metadata.price
       });
 
-      if (exists) {
-        console.log("🛑 Transacción ya existente. No se guarda duplicado.");
-        return;
-      }
-      // Dentro del webhook, después de obtener el payment:
-      const event = await Event.findById(metadata.event_id);
-      const rawMenus = metadata.selected_menus || {};
-      const processedMenus = {};
-
-      if (event && event.menuMoments && Array.isArray(event.menuMoments)) {
-        for (const index in rawMenus) {
-          const moment = event.menuMoments[index];
-          if (moment) {
-            processedMenus[moment.dateTime] = rawMenus[index];
-          }
-        }
-      }
+      if (exists) return;
 
       const newTransaction = new Transaction({
         eventId: metadata.event_id,
@@ -388,23 +350,22 @@ app.post("/webhook", express.json(), async (req, res) => {
         lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: processedMenus, // ✅ Ahora ya tiene las fechas como claves
+        selectedMenus: processedMenus,
         transactionDate: new Date(),
         verified: false,
         metadataType: 'mercadopago'
       });
-
-         
 
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
       console.error("❌ Error procesando webhook:", error);
     }
-  }, 6000); // ⏱️ Aumentamos la espera a 6 segundos
+  }, 6000);
 
   res.sendStatus(200);
 });
+
 
 
   
