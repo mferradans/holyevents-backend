@@ -272,5 +272,28 @@ router.get('/:eventId/sales', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Error al obtener las ventas del evento' });
   }
 });
-  
+router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
+  try {
+    const { name, lastName, email, tel, selectedMenus, metadataType = 'manual' } = req.body;
+    const { eventId } = req.params;
+
+    const transaction = new Transaction({
+      eventId,
+      name,
+      lastName,
+      email,
+      tel,
+      selectedMenus,
+      metadataType,
+      verified: true,
+    });
+
+    await transaction.save();
+    res.status(201).json({ message: 'Venta manual registrada correctamente' });
+  } catch (error) {
+    console.error('Error al guardar venta manual:', error);
+    res.status(500).json({ error: 'Error al registrar la venta manual' });
+  }
+});
+
 export default router;
