@@ -295,55 +295,38 @@ app.post("/webhook", express.json(), async (req, res) => {
   const paymentId = req.body.data?.id;
 
   if (topic !== 'payment') {
-    console.log(`⚠️ Webhook ignorado. Tipo recibido: "${topic}"`);
+    console.log(`⚠️ Tipo ignorado: "${topic}"`);
     return res.sendStatus(200);
   }
 
   if (!paymentId) {
-    console.warn("⚠️ Falta paymentId en la notificación.");
+    console.warn("⚠️ No hay paymentId.");
     return res.sendStatus(400);
   }
 
   try {
-    // ✅ Consultamos primero con un token genérico para acceder a metadata
-    const defaultToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
-    let paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: {
-        Authorization: `Bearer ${defaultToken}`
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
       }
     });
 
-    let payment = await paymentResponse.json();
+    const payment = await response.json();
 
-    console.log(`🔍 Respuesta inicial para paymentId ${paymentId}:\n`, JSON.stringify(payment, null, 2));
-
-    // Si 404 o falta metadata, abortamos
-    if (paymentResponse.status === 404 || !payment.metadata) {
-      console.error("❌ No se encontró el pago o no tiene metadata.");
-      return res.sendStatus(200);
+    if (response.status === 404) {
+      console.warn("❌ Pago aún no disponible. Mercado Pago reintentará.");
+      return res.sendStatus(500); // No respondemos 200, así MP reintenta
     }
 
-    // ✅ Ahora, obtenemos el token correcto desde metadata
-    const accessTokenFromMetadata = payment.metadata.accessToken || defaultToken;
-
-    // Re-consultar con el token correcto
-    paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${accessTokenFromMetadata}`
-      }
-    });
-
-    payment = await paymentResponse.json();
-
-    if (paymentResponse.status === 404 || payment.status !== 'approved') {
-      console.warn(`ℹ️ Pago ${paymentId} no aprobado o no encontrado en segundo intento (estado: ${payment.status}).`);
+    if (payment.status !== 'approved') {
+      console.log(`ℹ️ Pago no aprobado: ${payment.status}`);
       return res.sendStatus(200);
     }
 
     const metadata = payment.metadata;
 
-    if (!metadata.eventId || !metadata.email) {
-      console.warn("⚠️ Metadata incompleto en el pago.");
+    if (!metadata || !metadata.eventId || !metadata.email) {
+      console.warn("⚠️ Metadata incompleta.");
       return res.sendStatus(400);
     }
 
@@ -354,7 +337,7 @@ app.post("/webhook", express.json(), async (req, res) => {
     });
 
     if (exists) {
-      console.log("🛑 Transacción ya registrada. No se duplica.");
+      console.log("🛑 Ya existe esta transacción.");
       return res.sendStatus(200);
     }
 
@@ -372,12 +355,13 @@ app.post("/webhook", express.json(), async (req, res) => {
 
     await newTransaction.save();
     console.log(`✅ Transacción guardada para ${metadata.email}`);
-    res.sendStatus(200);
+    return res.sendStatus(200);
   } catch (error) {
-    console.error("❌ Error al procesar webhook:", error);
-    res.sendStatus(500);
+    console.error("❌ Error inesperado:", error);
+    return res.sendStatus(500);
   }
 });
+
 
 
 
