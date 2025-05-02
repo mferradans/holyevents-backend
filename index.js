@@ -376,9 +376,6 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   res.sendStatus(200);
 });
-
-
-
   
 app.get("/payment_failure", (req, res) => {
     res.send("El pago ha fallado. Inténtalo nuevamente.");
