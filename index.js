@@ -372,10 +372,12 @@ app.post("/webhook", express.json(), async (req, res) => {
         lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selected_menus,
+        selectedMenus: metadata.selected_menus, // 👈 dejarlo tal cual, como objecto de fechas
         transactionDate: new Date(),
-        verified: false
-      });      
+        verified: false,
+        metadataType: 'mercadopago'
+      });
+         
 
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
