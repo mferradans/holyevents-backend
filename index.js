@@ -308,7 +308,7 @@ app.post("/webhook", express.json(), async (req, res) => {
       // Primero pedimos el pago sin token (para sacar metadata)
       const firstResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
         headers: {
-          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+          Authorization: `Bearer ${payment.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN}`
         }
       });
 
