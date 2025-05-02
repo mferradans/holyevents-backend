@@ -8,7 +8,7 @@ const transactionSchema = new mongoose.Schema({
   lastName: String,
   email: String,
   tel: { type: String, required: true },
-  selectedMenus: { type: Map, of: String },
+  selectedMenus: { type: Object }, // 👈 CAMBIO AQUÍ
   transactionDate: { type: Date, default: Date.now },
   verified: { type: Boolean, default: false },
   metadataType: {
@@ -17,6 +17,7 @@ const transactionSchema = new mongoose.Schema({
     default: 'mercadopago'
   }
 });
+
 
 
 const Transaction = mongoose.model('Transaction', transactionSchema);
