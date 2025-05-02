@@ -112,16 +112,26 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-    // FUNCIONAL: usamos los índices como claves (lo mismo que se genera desde el frontend)
+    // ✅ Convertir los índices numéricos de selectedMenus en claves ISO reales
+    const fixedSelectedMenus = {};
+    event.menuMoments.forEach((moment, index) => {
+      const fecha = moment.dateTime;
+      const selected = selectedMenus[index];
+      if (selected) {
+        fixedSelectedMenus[fecha] = selected;
+      }
+    });
+
+    // ✅ Pasamos como selected_menus (snake_case) para que coincida con el webhook
     const metadata = {
-      eventId,
+      event_id: event._id,
       price,
       name,
-      lastName,
+      last_name: lastName,
       email,
       tel,
-      selectedMenus,
-      accessToken
+      selected_menus: fixedSelectedMenus,
+      access_token: accessToken
     };
 
     const body = {
@@ -151,6 +161,7 @@ app.post('/create_preference', async (req, res) => {
     res.status(500).json({ error: 'Error al crear la preferencia' });
   }
 });
+
 
 
 
