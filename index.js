@@ -123,16 +123,19 @@ event.menuMoments.forEach((moment, index) => {
   }
 });
 
+// Usamos directamente los índices del frontend
 const metadata = {
-  eventId,
+  event_id: eventId,
   price,
   name,
-  lastName,
+  last_name: lastName,
   email,
   tel,
-  selectedMenus: fixedSelectedMenus,
-  accessToken
+  selected_menus: selectedMenus, // ✅ Este es el objeto tal como viene del frontend
+  access_token: accessToken,
+  metadataType: 'mercadopago'
 };
+
 
 
     const body = {
@@ -364,6 +367,19 @@ app.post("/webhook", express.json(), async (req, res) => {
         console.log("🛑 Transacción ya existente. No se guarda duplicado.");
         return;
       }
+      // Dentro del webhook, después de obtener el payment:
+      const event = await Event.findById(metadata.event_id);
+      const rawMenus = metadata.selected_menus || {};
+      const processedMenus = {};
+
+      if (event && event.menuMoments && Array.isArray(event.menuMoments)) {
+        for (const index in rawMenus) {
+          const moment = event.menuMoments[index];
+          if (moment) {
+            processedMenus[moment.dateTime] = rawMenus[index];
+          }
+        }
+      }
 
       const newTransaction = new Transaction({
         eventId: metadata.event_id,
@@ -372,11 +388,12 @@ app.post("/webhook", express.json(), async (req, res) => {
         lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selected_menus, // 👈 dejarlo tal cual, como objecto de fechas
+        selectedMenus: processedMenus, // ✅ Ahora ya tiene las fechas como claves
         transactionDate: new Date(),
         verified: false,
         metadataType: 'mercadopago'
       });
+
          
 
       await newTransaction.save();
