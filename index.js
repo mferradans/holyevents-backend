@@ -113,15 +113,15 @@ app.post('/create_preference', async (req, res) => {
     const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
     const client = new MercadoPagoConfig({ accessToken });
 
-// Convertimos los índices en fechas reales
-const fixedSelectedMenus = {};
-event.menuMoments.forEach((moment, index) => {
-  const fecha = moment.dateTime;
-  const selected = selectedMenus[index];
-  if (selected) {
-    fixedSelectedMenus[fecha] = selected;
-  }
-});
+    const fixedSelectedMenus = {};
+    event.menuMoments.forEach((moment) => {
+      const fecha = moment.dateTime;
+      const selected = selectedMenus[fecha];
+      if (selected) {
+        fixedSelectedMenus[fecha] = selected;
+      }
+    });
+    
 
 const metadata = {
   eventId,
