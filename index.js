@@ -146,7 +146,7 @@ const metadata = {
       metadata,
       auto_return: 'approved',
       back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success?preference_id=${event._id}`,
+        success: `${process.env.CLIENT_URL}/payment_success`,
         failure: `${process.env.CLIENT_URL}/payment_failure`,
         pending: `${process.env.CLIENT_URL}/payment_pending`
       },
@@ -198,75 +198,75 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     let yPosition = 50;
 
     doc.rect(containerX, yPosition, containerWidth, 700).stroke();
- // Carga la imagen desde la URL de ImgBB
- if (event.coverImage) {
-  const response = await axios({
-    method: 'get',
-    url: event.coverImage,
-    responseType: 'arraybuffer'
-  });
+  // Carga la imagen desde la URL de ImgBB
+  if (event.coverImage) {
+    const response = await axios({
+      method: 'get',
+      url: event.coverImage,
+      responseType: 'arraybuffer'
+    });
 
-  const imageBuffer = Buffer.from(response.data, 'binary');
-  doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
-}
-
-    yPosition += 140;
-    doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
-      .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150).stroke("#8B0000");
-
-    yPosition += 160;
-    doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
-    yPosition += 30;
-    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${new Date(event.startDate).toLocaleDateString("es-AR")}`, containerX, yPosition, { align: "center", width: containerWidth });
-
-    yPosition += 30;
-    doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
-
-    yPosition += 20;
-    doc.font("Helvetica-Bold").text("Nombre:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.name} ${transaction.lastName}`);
-
-    yPosition += 20;
-    doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
-
-    yPosition += 20;
-    if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
-      doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
-      yPosition += 20;
-      Object.entries(transaction.selectedMenus).forEach(([moment, menu]) => {
-        doc.font("Helvetica").text(`• ${new Date(event.menuMoments[moment].dateTime).toLocaleString()}: ${menu}`, leftMargin + 20, yPosition);
-        yPosition += 20;
-      });
-    }
-
-    yPosition += 20;
-    doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
-
-    yPosition += 20;
-    doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
-
-    yPosition += 40;
-    doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
-      .fontSize(10).fillColor("black")
-      .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
-
-      yPosition += 60;
-      const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
-      const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
-      
-      const logoSize = 60; // Hacer ambos logos del mismo tamaño
-      if (fs.existsSync(logoHolyPath)) {
-        doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
-      }
-      if (fs.existsSync(logoMiporaPath)) {
-        doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
-      }
-
-    doc.end();
-    doc.pipe(res);
-  } catch (error) {
-    console.log(error);
-    res.status(500).send("Error al generar el comprobante.");
+    const imageBuffer = Buffer.from(response.data, 'binary');
+    doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
   }
+
+      yPosition += 140;
+      doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
+        .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150).stroke("#8B0000");
+
+      yPosition += 160;
+      doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
+      yPosition += 30;
+      doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${new Date(event.startDate).toLocaleDateString("es-AR")}`, containerX, yPosition, { align: "center", width: containerWidth });
+
+      yPosition += 30;
+      doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
+
+      yPosition += 20;
+      doc.font("Helvetica-Bold").text("Nombre:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.name} ${transaction.lastName}`);
+
+      yPosition += 20;
+      doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
+
+      yPosition += 20;
+      if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
+        doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
+        yPosition += 20;
+        Object.entries(transaction.selectedMenus).forEach(([moment, menu]) => {
+          doc.font("Helvetica").text(`• ${new Date(event.menuMoments[moment].dateTime).toLocaleString()}: ${menu}`, leftMargin + 20, yPosition);
+          yPosition += 20;
+        });
+      }
+
+      yPosition += 20;
+      doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
+
+      yPosition += 20;
+      doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
+
+      yPosition += 40;
+      doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
+        .fontSize(10).fillColor("black")
+        .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
+
+        yPosition += 60;
+        const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
+        const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
+        
+        const logoSize = 60; // Hacer ambos logos del mismo tamaño
+        if (fs.existsSync(logoHolyPath)) {
+          doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
+        }
+        if (fs.existsSync(logoMiporaPath)) {
+          doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
+        }
+
+      doc.end();
+      doc.pipe(res);
+    } catch (error) {
+      console.log(error);
+      res.status(500).send("Error al generar el comprobante.");
+    }
 });
 
 
@@ -366,7 +366,10 @@ app.post("/webhook", express.json(), async (req, res) => {
         console.log("🛑 Transacción ya existente. No se guarda duplicado.");
         return;
       }
-
+      if (!metadata.selectedMenus || Object.keys(metadata.selectedMenus).length === 0) {
+        console.warn("⚠️ selectedMenus vacío o no definido.");
+      }
+      
       const newTransaction = new Transaction({
         eventId: metadata.event_id,
         price: metadata.price,
@@ -374,7 +377,7 @@ app.post("/webhook", express.json(), async (req, res) => {
         lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selected_menus,
+        selectedMenus: metadata.selectedMenus,
         transactionDate: new Date(),
         verified: false
       });      
@@ -389,6 +392,43 @@ app.post("/webhook", express.json(), async (req, res) => {
   res.sendStatus(200);
 });
 
+app.get('/get_transaction', async (req, res) => {
+  const { paymentId } = req.query;
+  if (!paymentId) {
+    return res.status(400).json({ error: 'Falta paymentId' });
+  }
+
+  try {
+    // Buscamos el payment en Mercado Pago para extraer el metadata
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+      }
+    });
+
+    const payment = await response.json();
+    const metadata = payment.metadata;
+
+    if (!metadata || !metadata.eventId || !metadata.email) {
+      return res.status(404).json({ error: 'No se encontró metadata válida en el pago' });
+    }
+
+    const transaction = await Transaction.findOne({
+      eventId: metadata.eventId,
+      email: metadata.email,
+      price: metadata.price
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ error: 'Transacción no encontrada' });
+    }
+
+    res.json({ transactionId: transaction._id });
+  } catch (error) {
+    console.error("❌ Error al obtener transacción por paymentId:", error);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
 
   
 app.get("/payment_failure", (req, res) => {
