@@ -367,9 +367,13 @@ app.post("/webhook", express.json(), async (req, res) => {
         console.log("🛑 Transacción ya existente. No se guarda duplicado.");
         return;
       }
-      if (!metadata.selectedMenus || Object.keys(metadata.selectedMenus).length === 0) {
+      const selectedMenus = metadata.selectedMenus || metadata.selected_menus;
+      if (!selectedMenus || Object.keys(selectedMenus).length === 0) {
         console.warn("⚠️ selectedMenus vacío o no definido.");
+      } else {
+        console.log("🟢 selectedMenus recibido en webhook:", selectedMenus);
       }
+      
       
       const newTransaction = new Transaction({
         eventId: metadata.event_id,
@@ -378,7 +382,7 @@ app.post("/webhook", express.json(), async (req, res) => {
         lastName: metadata.last_name,
         email: metadata.email,
         tel: metadata.tel,
-        selectedMenus: metadata.selectedMenus,
+        selectedMenus: selectedMenus, 
         transactionDate: new Date(),
         verified: false
       });      
