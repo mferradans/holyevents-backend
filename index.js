@@ -114,13 +114,12 @@ app.post('/create_preference', async (req, res) => {
     const client = new MercadoPagoConfig({ accessToken });
 
     const fixedSelectedMenus = {};
-    event.menuMoments.forEach((moment) => {
-      const fecha = moment.dateTime;
-      const selected = selectedMenus[fecha];
-      if (selected) {
-        fixedSelectedMenus[fecha] = selected;
+    Object.entries(selectedMenus || {}).forEach(([dateStr, menu]) => {
+      if (menu) {
+        fixedSelectedMenus[dateStr] = menu;
       }
     });
+    
     
 
 const metadata = {
@@ -414,7 +413,7 @@ app.get('/get_transaction', async (req, res) => {
     }
 
     const transaction = await Transaction.findOne({
-      eventId: metadata.eventId,
+      eventId: metadata.event_id,
       email: metadata.email,
       price: metadata.price
     });
