@@ -166,12 +166,44 @@ const metadata = {
 
 
 
-app.get('/payment_success', (req, res) => {
-  const { preference_id } = req.query;
+app.get('/payment_success', async (req, res) => {
+  const { payment_id } = req.query;
 
+  if (!payment_id) {
+    return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=missing_payment_id`);
+  }
 
-  res.redirect(`${process.env.CLIENT_URL}/payment_success?preference_id=${preference_id}`);
+  try {
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+      }
+    });
+
+    const payment = await response.json();
+    const metadata = payment.metadata;
+
+    if (!metadata || !metadata.email || !metadata.event_id || !metadata.price) {
+      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=metadata_error`);
+    }
+
+    const transaction = await Transaction.findOne({
+      eventId: metadata.event_id,
+      email: metadata.email,
+      price: metadata.price
+    });
+
+    if (!transaction) {
+      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=not_found`);
+    }
+
+    return res.redirect(`${process.env.CLIENT_URL}/success?transactionId=${transaction._id}`);
+  } catch (error) {
+    console.error('❌ Error en /payment_success:', error);
+    return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=error`);
+  }
 });
+
 
 
 
