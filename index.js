@@ -120,7 +120,9 @@ app.post('/create_preference', async (req, res) => {
       }
     });
     
-    
+    console.log("🟡 selectedMenus recibido en /create_preference:", selectedMenus);
+console.log("🟡 fixedSelectedMenus procesado:", fixedSelectedMenus);
+
 
 const metadata = {
   eventId,
@@ -380,6 +382,7 @@ app.post("/webhook", express.json(), async (req, res) => {
         transactionDate: new Date(),
         verified: false
       });      
+      console.log("📦 Metadata recibida en webhook:", metadata);
 
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
@@ -393,23 +396,25 @@ app.post("/webhook", express.json(), async (req, res) => {
 
 app.get('/get_transaction', async (req, res) => {
   const { paymentId } = req.query;
+
   if (!paymentId) {
     return res.status(400).json({ error: 'Falta paymentId' });
   }
 
   try {
-    // Buscamos el payment en Mercado Pago para extraer el metadata
+    // Buscar el pago real en Mercado Pago
     const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       headers: {
         Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
       }
     });
-
     const payment = await response.json();
+
     const metadata = payment.metadata;
 
-    if (!metadata || !metadata.eventId || !metadata.email) {
-      return res.status(404).json({ error: 'No se encontró metadata válida en el pago' });
+    if (!metadata || !metadata.email || !metadata.event_id || !metadata.price) {
+      console.warn('⚠️ Metadata incompleta o mal formada.');
+      return res.status(404).json({ error: 'Transacción no encontrada' });
     }
 
     const transaction = await Transaction.findOne({
@@ -419,15 +424,17 @@ app.get('/get_transaction', async (req, res) => {
     });
 
     if (!transaction) {
+      console.warn('⚠️ Transacción no encontrada en la DB.');
       return res.status(404).json({ error: 'Transacción no encontrada' });
     }
 
-    res.json({ transactionId: transaction._id });
+    res.json(transaction);
   } catch (error) {
-    console.error("❌ Error al obtener transacción por paymentId:", error);
-    res.status(500).json({ error: 'Error del servidor' });
+    console.error('❌ Error en /get_transaction:', error);
+    res.status(500).json({ error: 'Error al obtener la transacción' });
   }
 });
+
 
   
 app.get("/payment_failure", (req, res) => {
