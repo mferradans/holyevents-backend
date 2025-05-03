@@ -231,7 +231,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="comprobante_${transactionId}.pdf"`);
 
     const doc = new PDFDocument({ margin: 50 });
-    doc.pipe(res); // 🔁 Pipe se mueve arriba del contenido
+    doc.pipe(res);
 
     const verificationUrl = `${process.env.CLIENT_URL}/verification_result?transactionId=${transaction._id}`;
     const qrCodeImage = await QRCode.toDataURL(verificationUrl);
@@ -244,7 +244,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     doc.rect(containerX, yPosition, containerWidth, 700).stroke();
 
-    // Imagen de portada del evento
+    // Imagen de portada
     if (event.coverImage) {
       try {
         const response = await axios({
@@ -262,14 +262,14 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     yPosition += 140;
 
-    // Código QR
+    // QR
     doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
       .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150)
       .stroke("#8B0000");
 
     yPosition += 160;
 
-    // Datos del evento y comprador
+    // Datos básicos
     doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
     yPosition += 30;
 
@@ -285,34 +285,41 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
     yPosition += 20;
 
-    // Menús seleccionados
+    // 🔧 Menús seleccionados (corregido)
     if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
+      console.log("🍽️ Menús seleccionados:", transaction.selectedMenus);
       doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
       yPosition += 20;
-    
+
       Object.entries(transaction.selectedMenus).forEach(([momentKey, menu]) => {
-        const normalizedDate = new Date(momentKey.replace(/_t|_z/gi, 'T'));
-    
-        const matchedMoment = event.menuMoments.find(m => {
+        // Normalizar fecha ISO
+        const normalizedKey = momentKey.replace('_t', 'T').replace('_z', 'Z');
+        const momentDate = new Date(normalizedKey);
+
+        const matchedMoment = event.menuMoments?.find(m => {
           const eventDate = new Date(m.dateTime);
-          return Math.abs(eventDate - normalizedDate) < 60000; // 1 minuto de tolerancia
+          return Math.abs(eventDate.getTime() - momentDate.getTime()) < 60000;
         });
-    
-        const dateText = matchedMoment
-          ? new Date(matchedMoment.dateTime).toLocaleString("es-AR", {
-              weekday: 'long',
-              day: '2-digit',
-              month: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            })
-          : new Date(momentKey.replace(/_t|_z/gi, 'T')).toLocaleString("es-AR");
-    
+
+        let dateText;
+        if (matchedMoment) {
+          const d = new Date(matchedMoment.dateTime);
+          dateText = d.toLocaleString("es-AR", {
+            weekday: 'long',
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } else {
+          dateText = momentDate.toLocaleString("es-AR");
+          console.warn("⚠️ No se encontró menúMoment coincidente para:", momentKey);
+        }
+
         doc.font("Helvetica").text(`• Menú del ${dateText}: ${menu}`, leftMargin + 20, yPosition);
         yPosition += 20;
       });
     }
-    
 
     yPosition += 20;
     doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
@@ -321,7 +328,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
     yPosition += 40;
 
-    // Franja inferior de aviso
+    // Franja inferior
     doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
       .fontSize(10).fillColor("black")
       .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
@@ -347,7 +354,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
       console.warn("⚠️ Logo Mipora no encontrado.");
     }
 
-    doc.end(); // Finaliza y envía el PDF
+    doc.end();
     console.log("🎉 PDF generado y enviado correctamente.");
   } catch (error) {
     console.error("❌ Error al generar el comprobante:", error);
