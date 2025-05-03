@@ -289,16 +289,30 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
       doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
       yPosition += 20;
-
-      Object.entries(transaction.selectedMenus).forEach(([moment, menu]) => {
-        const parsedDate = new Date(moment.replace(/_t|_z/gi, 'T')); // limpieza por si vienen mal formateadas
-        const formattedDate = isNaN(parsedDate) ? moment : parsedDate.toLocaleString("es-AR");
-        doc.font("Helvetica").text(`• ${formattedDate}: ${menu}`, leftMargin + 20, yPosition);
+    
+      Object.entries(transaction.selectedMenus).forEach(([momentKey, menu]) => {
+        const normalizedDate = new Date(momentKey.replace(/_t|_z/gi, 'T'));
+    
+        const matchedMoment = event.menuMoments.find(m => {
+          const eventDate = new Date(m.dateTime);
+          return Math.abs(eventDate - normalizedDate) < 60000; // 1 minuto de tolerancia
+        });
+    
+        const dateText = matchedMoment
+          ? new Date(matchedMoment.dateTime).toLocaleString("es-AR", {
+              weekday: 'long',
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : new Date(momentKey.replace(/_t|_z/gi, 'T')).toLocaleString("es-AR");
+    
+        doc.font("Helvetica").text(`• Menú del ${dateText}: ${menu}`, leftMargin + 20, yPosition);
         yPosition += 20;
       });
-    } else {
-      console.log("ℹ️ No hay menús seleccionados para mostrar.");
     }
+    
 
     yPosition += 20;
     doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
