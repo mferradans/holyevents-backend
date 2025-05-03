@@ -102,66 +102,66 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 
 
 app.post('/create_preference', async (req, res) => {
-  const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
+    const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
 
-  try {
-    const event = await Event.findById(eventId).populate('createdBy');
-    if (!event) {
-      return res.status(404).json({ error: 'Evento no encontrado' });
-    }
-
-    const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
-    const client = new MercadoPagoConfig({ accessToken });
-
-    const fixedSelectedMenus = {};
-    Object.entries(selectedMenus || {}).forEach(([dateStr, menu]) => {
-      if (menu) {
-        fixedSelectedMenus[dateStr] = menu;
+    try {
+      const event = await Event.findById(eventId).populate('createdBy');
+      if (!event) {
+        return res.status(404).json({ error: 'Evento no encontrado' });
       }
-    });
-    
-    console.log("🟡 selectedMenus recibido en /create_preference:", selectedMenus);
-console.log("🟡 fixedSelectedMenus procesado:", fixedSelectedMenus);
+
+      const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+      const client = new MercadoPagoConfig({ accessToken });
+
+      const fixedSelectedMenus = {};
+      Object.entries(selectedMenus || {}).forEach(([dateStr, menu]) => {
+        if (menu) {
+          fixedSelectedMenus[dateStr] = menu;
+        }
+      });
+      
+      console.log("🟡 selectedMenus recibido en /create_preference:", selectedMenus);
+  console.log("🟡 fixedSelectedMenus procesado:", fixedSelectedMenus);
 
 
-const metadata = {
-  eventId,
-  price,
-  name,
-  lastName,
-  email,
-  tel,
-  selectedMenus: fixedSelectedMenus,
-  accessToken
-};
+  const metadata = {
+    eventId,
+    price,
+    name,
+    lastName,
+    email,
+    tel,
+    selectedMenus: fixedSelectedMenus,
+    accessToken
+  };
 
 
-    const body = {
-      items: [{
-        title: event.name,
-        quantity: 1,
-        unit_price: Number(price),
-        currency_id: 'ARS'
-      }],
-      payer: { name, surname: lastName, email, tel },
-      metadata,
-      auto_return: 'approved',
-      back_urls: {
-        success: `${process.env.CLIENT_URL}/payment_success`,
-        failure: `${process.env.CLIENT_URL}/payment_failure`,
-        pending: `${process.env.CLIENT_URL}/payment_pending`
-      },
-      notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
-    };
+      const body = {
+        items: [{
+          title: event.name,
+          quantity: 1,
+          unit_price: Number(price),
+          currency_id: 'ARS'
+        }],
+        payer: { name, surname: lastName, email, tel },
+        metadata,
+        auto_return: 'approved',
+        back_urls: {
+          success: `${process.env.CLIENT_URL}/payment_success`,
+          failure: `${process.env.CLIENT_URL}/payment_failure`,
+          pending: `${process.env.CLIENT_URL}/payment_pending`
+        },
+        notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
+      };
 
-    const preference = new Preference(client);
-    const result = await preference.create({ body });
+      const preference = new Preference(client);
+      const result = await preference.create({ body });
 
-    res.json({ id: result.id });
-  } catch (error) {
-    console.error('Error en /create_preference:', error);
-    res.status(500).json({ error: 'Error al crear la preferencia' });
-  }
+      res.json({ id: result.id });
+    } catch (error) {
+      console.error('Error en /create_preference:', error);
+      res.status(500).json({ error: 'Error al crear la preferencia' });
+    }
 });
 
 
@@ -210,20 +210,32 @@ app.get('/payment_success', async (req, res) => {
 
 app.get("/download_receipt/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
+  console.log(`📥 [DOWNLOAD] Solicitud para descargar comprobante de transacción: ${transactionId}`);
 
   try {
     const transaction = await Transaction.findById(transactionId).lean();
-    if (!transaction) return res.status(404).send("Transacción no encontrada.");
+    if (!transaction) {
+      console.warn("⚠️ Transacción no encontrada en la base de datos.");
+      return res.status(404).send("Transacción no encontrada.");
+    }
+    console.log("✅ Transacción encontrada:", transaction.email, transaction._id);
 
     const event = await Event.findById(transaction.eventId).lean();
-    if (!event) return res.status(404).send("Evento asociado no encontrado.");
+    if (!event) {
+      console.warn("⚠️ Evento asociado no encontrado.");
+      return res.status(404).send("Evento asociado no encontrado.");
+    }
+    console.log("✅ Evento encontrado:", event.name, event._id);
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=\"comprobante_${transactionId}.pdf\"`);
+    res.setHeader("Content-Disposition", `attachment; filename="comprobante_${transactionId}.pdf"`);
 
     const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res); // 🔁 Pipe se mueve arriba del contenido
+
     const verificationUrl = `${process.env.CLIENT_URL}/verification_result?transactionId=${transaction._id}`;
     const qrCodeImage = await QRCode.toDataURL(verificationUrl);
+    console.log("✅ Código QR generado con URL:", verificationUrl);
 
     const containerX = 100;
     const containerWidth = 400;
@@ -231,76 +243,105 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     let yPosition = 50;
 
     doc.rect(containerX, yPosition, containerWidth, 700).stroke();
-  // Carga la imagen desde la URL de ImgBB
-  if (event.coverImage) {
-    const response = await axios({
-      method: 'get',
-      url: event.coverImage,
-      responseType: 'arraybuffer'
-    });
 
-    const imageBuffer = Buffer.from(response.data, 'binary');
-    doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
-  }
-
-      yPosition += 140;
-      doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
-        .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150).stroke("#8B0000");
-
-      yPosition += 160;
-      doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
-      yPosition += 30;
-      doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${new Date(event.startDate).toLocaleDateString("es-AR")}`, containerX, yPosition, { align: "center", width: containerWidth });
-
-      yPosition += 30;
-      doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
-
-      yPosition += 20;
-      doc.font("Helvetica-Bold").text("Nombre:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.name} ${transaction.lastName}`);
-
-      yPosition += 20;
-      doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
-
-      yPosition += 20;
-      if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
-        doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
-        yPosition += 20;
-        Object.entries(transaction.selectedMenus).forEach(([moment, menu]) => {
-          doc.font("Helvetica").text(`• ${new Date(event.menuMoments[moment].dateTime).toLocaleString()}: ${menu}`, leftMargin + 20, yPosition);
-          yPosition += 20;
+    // Imagen de portada del evento
+    if (event.coverImage) {
+      try {
+        const response = await axios({
+          method: 'get',
+          url: event.coverImage,
+          responseType: 'arraybuffer'
         });
+        const imageBuffer = Buffer.from(response.data, 'binary');
+        doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
+        console.log("🖼️ Imagen de portada cargada correctamente.");
+      } catch (imageErr) {
+        console.warn("⚠️ No se pudo cargar la imagen del evento:", imageErr.message);
       }
-
-      yPosition += 20;
-      doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
-
-      yPosition += 20;
-      doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
-
-      yPosition += 40;
-      doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
-        .fontSize(10).fillColor("black")
-        .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
-
-        yPosition += 60;
-        const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
-        const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
-        
-        const logoSize = 60; // Hacer ambos logos del mismo tamaño
-        if (fs.existsSync(logoHolyPath)) {
-          doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
-        }
-        if (fs.existsSync(logoMiporaPath)) {
-          doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
-        }
-
-      doc.end();
-      doc.pipe(res);
-    } catch (error) {
-      console.log(error);
-      res.status(500).send("Error al generar el comprobante.");
     }
+
+    yPosition += 140;
+
+    // Código QR
+    doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
+      .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150)
+      .stroke("#8B0000");
+
+    yPosition += 160;
+
+    // Datos del evento y comprador
+    doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
+    yPosition += 30;
+
+    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${new Date(event.startDate).toLocaleDateString("es-AR")}`, containerX, yPosition, { align: "center", width: containerWidth });
+    yPosition += 30;
+
+    doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
+    yPosition += 20;
+
+    doc.font("Helvetica-Bold").text("Nombre:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.name} ${transaction.lastName}`);
+    yPosition += 20;
+
+    doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
+    yPosition += 20;
+
+    // Menús seleccionados
+    if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
+      doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
+      yPosition += 20;
+
+      Object.entries(transaction.selectedMenus).forEach(([moment, menu]) => {
+        const parsedDate = new Date(moment.replace(/_t|_z/gi, 'T')); // limpieza por si vienen mal formateadas
+        const formattedDate = isNaN(parsedDate) ? moment : parsedDate.toLocaleString("es-AR");
+        doc.font("Helvetica").text(`• ${formattedDate}: ${menu}`, leftMargin + 20, yPosition);
+        yPosition += 20;
+      });
+    } else {
+      console.log("ℹ️ No hay menús seleccionados para mostrar.");
+    }
+
+    yPosition += 20;
+    doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
+    yPosition += 20;
+
+    doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
+    yPosition += 40;
+
+    // Franja inferior de aviso
+    doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
+      .fontSize(10).fillColor("black")
+      .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
+
+    yPosition += 60;
+
+    // Logos
+    const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
+    const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
+    const logoSize = 60;
+
+    if (fs.existsSync(logoHolyPath)) {
+      doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
+      console.log("✅ Logo HolyEvents cargado.");
+    } else {
+      console.warn("⚠️ Logo HolyEvents no encontrado.");
+    }
+
+    if (fs.existsSync(logoMiporaPath)) {
+      doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
+      console.log("✅ Logo Mipora cargado.");
+    } else {
+      console.warn("⚠️ Logo Mipora no encontrado.");
+    }
+
+    doc.end(); // Finaliza y envía el PDF
+    console.log("🎉 PDF generado y enviado correctamente.");
+  } catch (error) {
+    console.error("❌ Error al generar el comprobante:", error);
+    res.status(500).send("Error al generar el comprobante.");
+  }
 });
+
+
 
 
 
