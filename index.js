@@ -533,6 +533,14 @@ app.get('/get_transaction', async (req, res) => {
   }
 });
 
+// Ruta raíz para monitoreo
+router.get('/', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    message: 'Backend activo',
+    timestamp: new Date(),
+  });
+});
 
   
 app.get("/payment_failure", (req, res) => {
