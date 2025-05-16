@@ -29,7 +29,7 @@ router.post('/upload', upload.single('coverImage'), async (req, res) => {
   const formData = new FormData();
   formData.append('image', req.file.buffer.toString('base64'));
   formData.append('key', process.env.IMGBB_API_KEY);  // Asegúrate de tener esta clave en tus variables de entorno
-  formData.append('expiration', 600); // Opcional: establecer un tiempo de expiración para la imagen
+  // formData.append('expiration', 600); // Opcional: establecer un tiempo de expiración para la imagen
 
   try {
     const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
