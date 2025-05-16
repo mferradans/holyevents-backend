@@ -147,62 +147,58 @@ router.get('/:id', async (req, res) => {
 
 // Actualizar un evento y eliminar la imagen anterior si se sube una nueva
 router.put('/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name, location, description, price, startDate, endPurchaseDate, capacity, hasMenu, menuOptions, coverImage, status, imageRemoved } = req.body;
-  
-    // Obtener el directorio actual al estilo ES6
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-  
-    try {
-      // Encontrar el evento antes de actualizarlo
-      const event = await Event.findById(id);
-  
-      if (!event) {
-        return res.status(404).json({ error: 'Evento no encontrado' });
-      }
-  
-      // Si la imagen ha sido removida o si se ha subido una nueva imagen
-      if (imageRemoved || (coverImage && coverImage !== event.coverImage)) {
-        const oldImagePath = path.join(__dirname, '../uploads', path.basename(event.coverImage));  // Asegurarse de obtener solo el nombre del archivo
-  
-        // Verificar si la imagen existe y si es un archivo, no una carpeta
-        if (fs.existsSync(oldImagePath) && fs.lstatSync(oldImagePath).isFile()) {
-          fs.unlink(oldImagePath, (err) => {
-            if (err) {
-              console.error('Error al eliminar la imagen de portada anterior:', err);
-            }
-          });
-        } else {
-          console.error('La imagen no es un archivo o no existe.');
-        }
-      }
-  
-      // Actualizar el evento con los nuevos datos, y eliminar la imagen si fue removida
-      const updatedEvent = await Event.findByIdAndUpdate(id, {
-        name,
-        location,
-        description,
-        price,
-        startDate,
-        endPurchaseDate,
-        capacity,
-        hasMenu,
-        menuOptions: hasMenu ? menuOptions : [],
-        coverImage: imageRemoved ? '' : coverImage,  // Si se quitó la imagen, guardamos una cadena vacía
-        status,
-      }, { new: true });
-  
-      res.json({ message: 'Evento actualizado exitosamente', event: updatedEvent });
-  
-    } catch (error) {
-      console.error('Error al actualizar el evento:', error);
-      res.status(500).json({ error: 'Error al actualizar el evento' });
-    }
-  });
+  const { id } = req.params;
+  const {
+    name, location, description, price, startDate, endPurchaseDate,
+    capacity, hasMenu, menuMoments, coverImage, status, imageRemoved
+  } = req.body;
 
-// Eliminar un evento y su imagen de portada si existe
-router.delete('/:id', async (req, res) => {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  try {
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({ error: 'Evento no encontrado' });
+    }
+
+    if (imageRemoved || (coverImage && coverImage !== event.coverImage)) {
+      const oldImagePath = path.join(__dirname, '../uploads', path.basename(event.coverImage));
+      if (fs.existsSync(oldImagePath) && fs.lstatSync(oldImagePath).isFile()) {
+        fs.unlink(oldImagePath, (err) => {
+          if (err) console.error('Error al eliminar imagen anterior:', err);
+        });
+      }
+    }
+
+    const updatedEvent = await Event.findByIdAndUpdate(id, {
+      name,
+      location,
+      description,
+      price,
+      startDate,
+      endPurchaseDate,
+      capacity,
+      hasMenu,
+      menuMoments: hasMenu ? menuMoments : [],
+      coverImage: imageRemoved ? '' : coverImage,
+      status,
+    }, { new: true });
+
+    res.json({ message: 'Evento actualizado exitosamente', event: updatedEvent });
+  } catch (error) {
+    console.error('Error al actualizar el evento:', error);
+    res.status(500).json({ error: 'Error al actualizar el evento' });
+  }
+});
+
+
+
+
+
+  // Eliminar un evento y su imagen de portada si existe
+
+  router.delete('/:id', async (req, res) => {
     const { id } = req.params;
   
     // Obtener el directorio actual al estilo ES6 (porque __dirname no existe en ES6)
