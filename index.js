@@ -49,9 +49,6 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
 
-app.get("/", (req, res) => {
-    res.send("Soy el server:)");
-});
 
 app.get('/api/transactions/stats', verifyToken, async (req, res) => {
   try {
