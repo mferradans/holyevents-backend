@@ -326,13 +326,14 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
     const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
-    const logoSize = 60;
-
+    const logoSize = 40;
+    const logosY = yPosition;
+    
     if (fs.existsSync(logoHolyPath)) {
-      doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
+      doc.image(logoHolyPath, containerX + containerWidth / 2 - logoSize - 10, logosY, { width: logoSize, height: logoSize });
     }
     if (fs.existsSync(logoMiporaPath)) {
-      doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
+      doc.image(logoMiporaPath, containerX + containerWidth / 2 + 10 , logosY, { width: logoSize, height: logoSize });
     }
 
     doc.end();
