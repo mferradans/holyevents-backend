@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const transactionSchema = new mongoose.Schema({
+  mercadoPagoPaymentId: { type: String, unique: true, sparse: true }, // ID de MercadoPago
   eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true },
   price: Number,
   quantity: Number,
