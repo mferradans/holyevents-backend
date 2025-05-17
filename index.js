@@ -282,16 +282,14 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
     yPosition += 20;
 
-    // 🔧 Menús seleccionados (corregido)
+    // ✅ MENÚS SELECCIONADOS
     if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
       console.log("🍽️ Menús seleccionados:", transaction.selectedMenus);
       doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
       yPosition += 20;
 
       Object.entries(transaction.selectedMenus).forEach(([momentKey, menu]) => {
-        // Normalizar fecha ISO
-        const normalizedKey = momentKey.replace('_t', 'T').replace('_z', 'Z');
-        const momentDate = new Date(normalizedKey);
+        const momentDate = new Date(momentKey);
 
         const matchedMoment = event.menuMoments?.find(m => {
           const eventDate = new Date(m.dateTime);
@@ -368,26 +366,27 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
 
   try {
-    // Buscar la transacción en la base de datos
-    const transaction = await Transaction.findById(transactionId);
+    const transaction = await Transaction.findById(transactionId).lean();
     if (!transaction) {
       return res.json({ success: false, message: 'Transacción no encontrada.' });
     }
 
-    // Si la transacción se encuentra, enviar los detalles al frontend
     res.json({
       success: true,
-      name: transaction.name,
       transactionId: transaction._id,
+      name: transaction.name,
       lastName: transaction.lastName,
-      eventId: transaction.eventId,
+      email: transaction.email,
       price: transaction.price,
-      menu: transaction.menu,
+      transactionDate: transaction.transactionDate,
+      eventId: transaction.eventId,
+      selectedMenus: transaction.selectedMenus || {}, // ✅ Incluye todos los menús
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al verificar la transacción.' });
   }
 });
+
 
 
 app.post("/webhook", express.json(), async (req, res) => {
