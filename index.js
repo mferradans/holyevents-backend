@@ -262,9 +262,22 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
     yPosition += 30;
 
-    const eventDate = DateTime.fromISO(event.startDate).setZone("America/Argentina/Buenos_Aires").setLocale("es").toFormat("cccc dd-MM-yyyy");
-    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, { align: "center", width: containerWidth });
-    yPosition += 30;
+    doc.fontSize(14).font("Helvetica-Oblique").text("¡Ticket único e intransferible!", containerX, yPosition, {
+      align: "center",
+      width: containerWidth
+    });
+    yPosition += 25;    
+
+    const eventDate = DateTime.fromJSDate(new Date(event.startDate))
+  .setZone("America/Argentina/Buenos_Aires")
+  .setLocale("es")
+  .toFormat("cccc dd-MM-yyyy");
+
+  doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, {
+    align: "center",
+    width: containerWidth
+  });
+  yPosition += 30;
 
     doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
     yPosition += 20;
