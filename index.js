@@ -164,32 +164,34 @@ app.post('/create_preference', async (req, res) => {
 
 
 app.get('/payment_success', async (req, res) => {
-  const { payment_id } = req.query;
+  const paymentId = req.query.payment_id || req.query.collection_id;
 
-  if (!payment_id) {
+  if (!paymentId) {
     return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=missing_payment_id`);
   }
 
   try {
-    const paymentIdStr = String(payment_id);
-    console.log(`🔁 Buscando transacción por paymentId: ${paymentIdStr}`);
+    console.log(`🔁 Buscando transacción con mercadoPagoPaymentId: ${paymentId}`);
 
-    // Hacer polling hasta 5 intentos con 1s de espera
+    let attempts = 0;
     let transaction = null;
-    for (let i = 0; i < 5; i++) {
-      transaction = await Transaction.findOne({ mercadoPagoPaymentId: paymentIdStr });
-      if (transaction) break;
-      console.log(`⏳ Intento ${i + 1}: Transacción no encontrada aún. Esperando...`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+
+    while (attempts < 5 && !transaction) {
+      transaction = await Transaction.findOne({ mercadoPagoPaymentId: String(paymentId) });
+      if (!transaction) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
+        attempts++;
+      }
     }
 
     if (!transaction) {
-      console.warn("❌ Transacción no encontrada tras polling");
+      console.warn("❌ No se encontró transacción luego de varios intentos");
       return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=transaction_not_found`);
     }
 
     console.log(`✅ Transacción encontrada: ${transaction._id}`);
     return res.redirect(`${process.env.CLIENT_URL}/success?transactionId=${transaction._id}`);
+
   } catch (error) {
     console.error('❌ Error en /payment_success:', error);
     return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=error`);
