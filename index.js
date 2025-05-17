@@ -171,46 +171,31 @@ app.get('/payment_success', async (req, res) => {
   }
 
   try {
-    // Obtener detalles del pago desde Mercado Pago
-    const response = await fetch(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
-      headers: {
-        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
-      }
-    });
+    const paymentIdStr = String(payment_id);
+    console.log(`🔁 Buscando transacción por paymentId: ${paymentIdStr}`);
 
-    const payment = await response.json();
-
-    if (!payment || !payment.id) {
-      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=payment_fetch_error`);
-    }
-
-    console.log(`🔁 Buscando transacción con mercadoPagoPaymentId: ${payment.id}`);
-
-    // 🔄 Hacer polling: esperar a que el webhook guarde la transacción
-    let attempts = 0;
+    // Hacer polling hasta 5 intentos con 1s de espera
     let transaction = null;
-
-    while (attempts < 5 && !transaction) {
-      transaction = await Transaction.findOne({ mercadoPagoPaymentId: String(payment.id) });
-      if (!transaction) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
-        attempts++;
-      }
+    for (let i = 0; i < 5; i++) {
+      transaction = await Transaction.findOne({ mercadoPagoPaymentId: paymentIdStr });
+      if (transaction) break;
+      console.log(`⏳ Intento ${i + 1}: Transacción no encontrada aún. Esperando...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     if (!transaction) {
-      console.warn("❌ No se encontró transacción luego de varios intentos");
+      console.warn("❌ Transacción no encontrada tras polling");
       return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=transaction_not_found`);
     }
 
     console.log(`✅ Transacción encontrada: ${transaction._id}`);
     return res.redirect(`${process.env.CLIENT_URL}/success?transactionId=${transaction._id}`);
-
   } catch (error) {
     console.error('❌ Error en /payment_success:', error);
     return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=error`);
   }
 });
+
 
 
 
