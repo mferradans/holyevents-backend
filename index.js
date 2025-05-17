@@ -389,7 +389,6 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 
 
 app.post("/webhook", express.json(), async (req, res) => {
-  
   const topic = req.body.type;
   const paymentId = req.body.data?.id;
 
@@ -447,7 +446,7 @@ app.post("/webhook", express.json(), async (req, res) => {
       if (!metadata || !metadata.event_id || !metadata.email) {
         console.warn("⚠️ Metadata incompleto en el pago recibido.");
         return;
-      }      
+      }
 
       const exists = await Transaction.findOne({ paymentId });
 
@@ -455,17 +454,32 @@ app.post("/webhook", express.json(), async (req, res) => {
         console.log("🛑 Transacción ya existente con ese paymentId. No se guarda duplicado.");
         return;
       }
-      
-      const selectedMenus = metadata.selectedMenus || metadata.selected_menus;
+
+      // ✅ Normalizar claves defectuosas de selectedMenus
+      const normalizeMenuKeys = (menus) => {
+        const fixed = {};
+        for (const rawKey in menus) {
+          const normalizedKey = rawKey
+            .replace(/_t/, 'T')
+            .replace(/_z$/, 'Z')
+            .replace(/_/g, ':');
+          fixed[normalizedKey] = menus[rawKey];
+        }
+        return fixed;
+      };
+
+      const selectedMenusRaw = metadata.selectedMenus || metadata.selected_menus || {};
+      const selectedMenus = normalizeMenuKeys(selectedMenusRaw);
+
       if (!selectedMenus || Object.keys(selectedMenus).length === 0) {
         console.warn("⚠️ selectedMenus vacío o no definido.");
       } else {
         console.log("🟢 selectedMenus recibido en webhook:", selectedMenus);
       }
-      
+
       const newTransaction = new Transaction({
         eventId: metadata.event_id,
-        paymentId: payment.id, // ✅ NUEVO
+        paymentId: payment.id,
         price: metadata.price,
         name: metadata.name,
         lastName: metadata.last_name,
@@ -475,18 +489,23 @@ app.post("/webhook", express.json(), async (req, res) => {
         transactionDate: new Date(),
         verified: false
       });
-          
+
       console.log("📦 Metadata recibida en webhook:", metadata);
+      console.log("🧹 selectedMenus normalizado:", selectedMenus);
 
       await newTransaction.save();
       console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
       console.error("❌ Error procesando webhook:", error);
     }
-  }, 6000); // ⏱️ Aumentamos la espera a 6 segundos
+  }, 6000);
 
   res.sendStatus(200);
 });
+
+
+
+
 
 app.get('/get_transaction', async (req, res) => {
 
