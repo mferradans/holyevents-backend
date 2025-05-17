@@ -267,10 +267,11 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
       width: containerWidth
     });
     yPosition += 25;    
-
-    const eventDate = DateTime.fromISO(event.startDate)
+    
+    const eventDate = DateTime.fromJSDate(new Date(event.startDate))
     .setLocale("es")
-    .toFormat("cccc dd-MM-yyyy");  
+    .toFormat("cccc dd-MM-yyyy");
+  
 
   doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, {
     align: "center",
