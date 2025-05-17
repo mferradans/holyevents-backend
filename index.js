@@ -178,21 +178,16 @@ app.get('/payment_success', async (req, res) => {
     });
 
     const payment = await response.json();
-    const metadata = payment.metadata;
 
-    if (!metadata) {
-      console.warn('⚠️ Metadata no encontrada en el pago.');
-      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=metadata_error`);
-    }
-
+    // ✅ Buscar por payment_id directamente (campo único)
     const transaction = await Transaction.findOne({ mercadoPagoPaymentId: payment_id });
 
     if (!transaction) {
-      console.warn('⚠️ Transacción no encontrada por payment_id:', payment_id);
+      console.warn('⚠️ Transacción NO encontrada por payment_id:', payment_id);
       return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=not_found`);
     }
 
-    console.log(`✅ Transacción encontrada: ${transaction._id} para payment_id ${payment_id}`);
+    console.log(`✅ Transacción correcta: ${transaction.name} (${transaction._id})`);
     return res.redirect(`${process.env.CLIENT_URL}/success?transactionId=${transaction._id}`);
   } catch (error) {
     console.error('❌ Error en /payment_success:', error);
