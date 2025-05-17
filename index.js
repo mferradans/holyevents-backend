@@ -203,7 +203,6 @@ app.get('/payment_success', async (req, res) => {
 
 
 
-
 app.get("/download_receipt/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
   console.log(`📥 [DOWNLOAD] Solicitud para descargar comprobante de transacción: ${transactionId}`);
@@ -214,14 +213,12 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
       console.warn("⚠️ Transacción no encontrada en la base de datos.");
       return res.status(404).send("Transacción no encontrada.");
     }
-    console.log("✅ Transacción encontrada:", transaction.email, transaction._id);
 
     const event = await Event.findById(transaction.eventId).lean();
     if (!event) {
       console.warn("⚠️ Evento asociado no encontrado.");
       return res.status(404).send("Evento asociado no encontrado.");
     }
-    console.log("✅ Evento encontrado:", event.name, event._id);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="comprobante_${transactionId}.pdf"`);
@@ -231,7 +228,6 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     const verificationUrl = `${process.env.CLIENT_URL}/verification_result?transactionId=${transaction._id}`;
     const qrCodeImage = await QRCode.toDataURL(verificationUrl);
-    console.log("✅ Código QR generado con URL:", verificationUrl);
 
     const containerX = 100;
     const containerWidth = 400;
@@ -240,7 +236,6 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     doc.rect(containerX, yPosition, containerWidth, 700).stroke();
 
-    // Imagen de portada
     if (event.coverImage) {
       try {
         const response = await axios({
@@ -250,7 +245,6 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
         });
         const imageBuffer = Buffer.from(response.data, 'binary');
         doc.image(imageBuffer, containerX + 10, yPosition + 10, { width: 380, height: 120 });
-        console.log("🖼️ Imagen de portada cargada correctamente.");
       } catch (imageErr) {
         console.warn("⚠️ No se pudo cargar la imagen del evento:", imageErr.message);
       }
@@ -258,18 +252,17 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     yPosition += 140;
 
-    // QR
     doc.image(qrCodeImage, containerX + (containerWidth - 150) / 2, yPosition, { width: 150, height: 150 })
       .rect(containerX + (containerWidth - 150) / 2, yPosition, 150, 150)
       .stroke("#8B0000");
 
     yPosition += 160;
 
-    // Datos básicos
     doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
     yPosition += 30;
 
-    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${new Date(event.startDate).toLocaleDateString("es-AR")}`, containerX, yPosition, { align: "center", width: containerWidth });
+    const eventDate = DateTime.fromISO(event.startDate).setZone("America/Argentina/Buenos_Aires").setLocale("es").toFormat("cccc dd-MM-yyyy");
+    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, { align: "center", width: containerWidth });
     yPosition += 30;
 
     doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
@@ -281,71 +274,53 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     doc.font("Helvetica-Bold").text("Email:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction.email}`);
     yPosition += 20;
 
-    // ✅ MENÚS SELECCIONADOS
     if (transaction.selectedMenus && Object.keys(transaction.selectedMenus).length > 0) {
-      console.log("🍽️ Menús seleccionados:", transaction.selectedMenus);
       doc.font("Helvetica-Bold").text("Menús seleccionados:", leftMargin, yPosition);
       yPosition += 20;
 
       Object.entries(transaction.selectedMenus).forEach(([momentKey, menu]) => {
-        const momentDate = new Date(momentKey);
+        const formatted = DateTime.fromISO(momentKey, { zone: 'utc' })
+          .setZone('America/Argentina/Buenos_Aires')
+          .setLocale('es')
+          .toFormat("cccc dd-MM, HH:mm");
 
-        const matchedMoment = event.menuMoments?.find(m => {
-          const eventDate = new Date(m.dateTime);
-          return Math.abs(eventDate.getTime() - momentDate.getTime()) < 60000;
+        const wrappedText = `• Menú del ${formatted}: ${menu}`;
+        const wrappedLines = doc.heightOfString(wrappedText, { width: 360 }) / doc.currentLineHeight();
+        doc.font("Helvetica").text(wrappedText, leftMargin + 20, yPosition, {
+          width: 360,
+          align: 'left'
         });
-
-        let dateText;
-        if (matchedMoment) {
-          const d = new Date(matchedMoment.dateTime);
-          dateText = d.toLocaleString("es-AR", {
-            weekday: 'long',
-            day: '2-digit',
-            month: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
-        } else {
-          dateText = momentDate.toLocaleString("es-AR");
-          console.warn("⚠️ No se encontró menúMoment coincidente para:", momentKey);
-        }
-
-        doc.font("Helvetica").text(`• Menú del ${dateText}: ${menu}`, leftMargin + 20, yPosition);
-        yPosition += 20;
+        yPosition += wrappedLines * doc.currentLineHeight() + 5;
       });
     }
 
-    yPosition += 20;
-    doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${new Date(transaction.transactionDate).toLocaleDateString("es-AR")}`);
+    yPosition += 10;
+    const formattedPurchase = DateTime.fromJSDate(transaction.transactionDate)
+      .setZone("America/Argentina/Buenos_Aires")
+      .setLocale("es")
+      .toFormat("dd-MM-yyyy");
+
+    doc.font("Helvetica-Bold").text("Fecha de compra:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${formattedPurchase}`);
     yPosition += 20;
 
     doc.font("Helvetica-Bold").text("Precio total:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` $${transaction.price}`);
     yPosition += 40;
 
-    // Franja inferior
     doc.rect(containerX, yPosition, containerWidth, 50).fillAndStroke("#e0e0e0", "#000")
       .fontSize(10).fillColor("black")
       .text("IMPORTANTE: NO escanee el código QR. Este ticket debe ser presentado en la entrada del evento en su celular o impreso.", containerX + 10, yPosition + 10, { width: containerWidth - 20, align: "center" });
 
     yPosition += 60;
 
-    // Logos
     const logoHolyPath = path.join(__dirname, "images", "holyevents.png");
     const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
     const logoSize = 60;
 
     if (fs.existsSync(logoHolyPath)) {
       doc.image(logoHolyPath, containerX + 90, yPosition, { width: logoSize, height: logoSize });
-      console.log("✅ Logo HolyEvents cargado.");
-    } else {
-      console.warn("⚠️ Logo HolyEvents no encontrado.");
     }
-
     if (fs.existsSync(logoMiporaPath)) {
       doc.image(logoMiporaPath, containerX + 230, yPosition, { width: logoSize, height: logoSize });
-      console.log("✅ Logo Mipora cargado.");
-    } else {
-      console.warn("⚠️ Logo Mipora no encontrado.");
     }
 
     doc.end();
@@ -355,6 +330,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     res.status(500).send("Error al generar el comprobante.");
   }
 });
+
 
 
 
