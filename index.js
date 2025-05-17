@@ -164,32 +164,34 @@ app.post('/create_preference', async (req, res) => {
 
 
 app.get('/payment_success', async (req, res) => {
-  const paymentId = req.query.payment_id || req.query.collection_id;
+  const { payment_id } = req.query;
 
-  if (!paymentId) {
+  if (!payment_id) {
     return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=missing_payment_id`);
   }
 
   try {
-    console.log(`🔁 Buscando transacción con mercadoPagoPaymentId: ${paymentId}`);
+    console.log(`🎯 Redirigiendo desde /payment_success con payment_id: ${payment_id}`);
 
-    let attempts = 0;
-    let transaction = null;
-
-    while (attempts < 5 && !transaction) {
-      transaction = await Transaction.findOne({ mercadoPagoPaymentId: String(paymentId) });
-      if (!transaction) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
-        attempts++;
+    const response = await fetch(`https://api.mercadopago.com/v1/payments/${payment_id}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
       }
+    });
+
+    const payment = await response.json();
+    const metadata = payment.metadata;
+
+    if (!metadata || !metadata.email || !metadata.event_id || !metadata.price) {
+      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=metadata_error`);
     }
+
+    const transaction = await Transaction.findOne({ paymentId });
 
     if (!transaction) {
-      console.warn("❌ No se encontró transacción luego de varios intentos");
-      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=transaction_not_found`);
+      return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=not_found`);
     }
-
-    console.log(`✅ Transacción encontrada: ${transaction._id}`);
+    
     return res.redirect(`${process.env.CLIENT_URL}/success?transactionId=${transaction._id}`);
 
   } catch (error) {
@@ -197,7 +199,6 @@ app.get('/payment_success', async (req, res) => {
     return res.redirect(`${process.env.CLIENT_URL}/payment_success?status=error`);
   }
 });
-
 
 
 
@@ -356,6 +357,9 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 });
 
 
+
+
+
 // Ruta para verificar la transacción por ID
 app.get("/verify_transaction/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
@@ -385,10 +389,16 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
 
 
 app.post("/webhook", express.json(), async (req, res) => {
+  
   const topic = req.body.type;
   const paymentId = req.body.data?.id;
 
-  if (topic !== 'payment') return res.sendStatus(200);
+  console.log(`📬 Webhook recibido para paymentId: ${paymentId}`);
+
+  if (topic !== 'payment') {
+    return res.sendStatus(200);
+  }
+
   if (!paymentId) {
     console.warn("⚠️ Falta paymentId en la notificación.");
     return res.sendStatus(400);
@@ -398,73 +408,88 @@ app.post("/webhook", express.json(), async (req, res) => {
 
   setTimeout(async () => {
     try {
-      console.log("🔄 [1] Primera consulta con token por defecto...");
+      // 1. Consulta inicial para intentar obtener el token dinámico desde metadata
+      console.log("🔄 Primera consulta a MP con token de entorno...");
       const tempResponse = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
+        headers: {
+          Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+        }
       });
       const tempPayment = await tempResponse.json();
 
       const dynamicToken = tempPayment?.metadata?.accessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
 
-      console.log("🔄 [2] Consulta final con token dinámico...");
+      // 2. Consulta final con token correcto
+      console.log(`🔄 Segunda consulta a MP con token dinámico (${dynamicToken === process.env.MERCADOPAGO_ACCESS_TOKEN ? "token de entorno" : "token del vendedor"})...`);
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: { Authorization: `Bearer ${dynamicToken}` }
+        headers: {
+          Authorization: `Bearer ${dynamicToken}`
+        }
       });
+
       const payment = await response.json();
 
-      console.log("📦 Respuesta completa de MercadoPago:");
+      console.log(`🔍 Respuesta final para paymentId ${paymentId}:`);
       console.log(JSON.stringify(payment, null, 2));
 
-      if (!payment || payment.status !== 'approved') {
-        console.log(`ℹ️ Pago ${paymentId} no aprobado o inválido.`);
+      if (response.status === 404 || payment.message === 'Payment not found') {
+        console.error("❌ No se encontró el pago o aún no está disponible en la API de Mercado Pago.");
         return;
       }
 
-      const metadata = payment.metadata || {};
-      const eventId = metadata.eventId || metadata.event_id;
-      const email = metadata.email;
-      const price = metadata.price;
-      const name = metadata.name;
-      const lastName = metadata.last_name || metadata.lastName;
-      const tel = metadata.tel;
-      const selectedMenus = metadata.selectedMenus || metadata.selected_menus || {};
-
-      if (!eventId || !email || !price) {
-        console.warn("⚠️ Metadata incompleta:", { eventId, email, price });
+      if (payment.status !== 'approved') {
+        console.log(`ℹ️ Pago ${paymentId} NO aprobado (estado: ${payment.status}).`);
         return;
       }
 
-      const exists = await Transaction.findOne({ mercadoPagoPaymentId: paymentId });
+      const metadata = payment.metadata;
+
+      if (!metadata || !metadata.event_id || !metadata.email) {
+        console.warn("⚠️ Metadata incompleto en el pago recibido.");
+        return;
+      }      
+
+      const exists = await Transaction.findOne({ paymentId });
+
       if (exists) {
-        console.log("🛑 Transacción ya registrada con este paymentId.");
+        console.log("🛑 Transacción ya existente con ese paymentId. No se guarda duplicado.");
         return;
       }
-
+      
+      const selectedMenus = metadata.selectedMenus || metadata.selected_menus;
+      if (!selectedMenus || Object.keys(selectedMenus).length === 0) {
+        console.warn("⚠️ selectedMenus vacío o no definido.");
+      } else {
+        console.log("🟢 selectedMenus recibido en webhook:", selectedMenus);
+      }
+      
       const newTransaction = new Transaction({
-        eventId,
-        price,
-        name,
-        lastName,
-        email,
-        tel,
+        eventId: metadata.event_id,
+        paymentId: payment.id, // ✅ NUEVO
+        price: metadata.price,
+        name: metadata.name,
+        lastName: metadata.last_name,
+        email: metadata.email,
+        tel: metadata.tel,
         selectedMenus,
         transactionDate: new Date(),
-        verified: false,
-        mercadoPagoPaymentId: paymentId,
+        verified: false
       });
+          
+      console.log("📦 Metadata recibida en webhook:", metadata);
 
       await newTransaction.save();
-      console.log(`✅ Transacción guardada correctamente con ID: ${newTransaction._id}`);
+      console.log(`✅ Transacción guardada correctamente para ${metadata.email}`);
     } catch (error) {
-      console.error("❌ Error en webhook:", error);
+      console.error("❌ Error procesando webhook:", error);
     }
-  }, 6000);
+  }, 6000); // ⏱️ Aumentamos la espera a 6 segundos
 
   res.sendStatus(200);
 });
 
-
 app.get('/get_transaction', async (req, res) => {
+
   const { paymentId } = req.query;
 
   if (!paymentId) {
@@ -486,15 +511,12 @@ app.get('/get_transaction', async (req, res) => {
       console.warn('⚠️ Metadata incompleta o mal formada.');
       return res.status(404).json({ error: 'Transacción no encontrada' });
     }
+    console.log(`🔍 Buscando transacción por paymentId: ${paymentId}`);
 
-    const transaction = await Transaction.findOne({
-      eventId: metadata.event_id,
-      email: metadata.email,
-      price: metadata.price
-    });
+    const transaction = await Transaction.findOne({ paymentId });
 
     if (!transaction) {
-      console.warn('⚠️ Transacción no encontrada en la DB.');
+      console.warn(`⚠️ No se encontró transacción con paymentId: ${paymentId}`);
       return res.status(404).json({ error: 'Transacción no encontrada' });
     }
 
