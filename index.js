@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 import Event from './models/Event.js';
 import axios from 'axios';
 import fetch from 'node-fetch'; // Asegúrate de importar esto al inicio del archivo
+import { DateTime } from 'luxon'; // ✅ Agregado para formatear fechas correctamente
 
 
 const mongoURI = process.env.MONGODB_URI;
@@ -284,13 +285,11 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
           .setLocale('es')
           .toFormat("cccc dd-MM, HH:mm");
 
-        const wrappedText = `• Menú del ${formatted}: ${menu}`;
-        const wrappedLines = doc.heightOfString(wrappedText, { width: 360 }) / doc.currentLineHeight();
-        doc.font("Helvetica").text(wrappedText, leftMargin + 20, yPosition, {
-          width: 360,
-          align: 'left'
-        });
-        yPosition += wrappedLines * doc.currentLineHeight() + 5;
+          const wrappedText = `• Menú del ${formatted}: ${menu}`;
+          const options = { width: 360 };
+          doc.font("Helvetica").text(wrappedText, leftMargin + 20, yPosition, options);
+          yPosition += doc.heightOfString(wrappedText, options) + 5;
+          
       });
     }
 
