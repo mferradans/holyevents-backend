@@ -100,67 +100,87 @@ app.get('/api/events/:id/transaction-count', async (req, res) => {
 
 
 app.post('/create_preference', async (req, res) => {
-    const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
+  const { eventId, price, name, lastName, email, selectedMenus, tel } = req.body;
 
-    try {
-      const event = await Event.findById(eventId).populate('createdBy');
-      if (!event) {
-        return res.status(404).json({ error: 'Evento no encontrado' });
-      }
-
-      const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
-      const client = new MercadoPagoConfig({ accessToken });
-
-      const fixedSelectedMenus = {};
-      Object.entries(selectedMenus || {}).forEach(([dateStr, menu]) => {
-        if (menu) {
-          fixedSelectedMenus[dateStr] = menu;
-        }
-      });
-      
-      console.log("🟡 selectedMenus recibido en /create_preference:", selectedMenus);
-  console.log("🟡 fixedSelectedMenus procesado:", fixedSelectedMenus);
-
-
-  const metadata = {
+  console.log("📩 [POST /create_preference] Datos recibidos:");
+  console.log({
     eventId,
     price,
     name,
     lastName,
     email,
     tel,
-    selectedMenus: fixedSelectedMenus,
-    accessToken
-  };
+    selectedMenus
+  });
 
-
-      const body = {
-        items: [{
-          title: event.name,
-          quantity: 1,
-          unit_price: Number(price),
-          currency_id: 'ARS'
-        }],
-        payer: { name, surname: lastName, email, tel },
-        metadata,
-        auto_return: 'approved',
-        back_urls: {
-          success: `${process.env.CLIENT_URL}/payment_success`,
-          failure: `${process.env.CLIENT_URL}/payment_failure`,
-          pending: `${process.env.CLIENT_URL}/payment_pending`
-        },
-        notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
-      };
-
-      const preference = new Preference(client);
-      const result = await preference.create({ body });
-
-      res.json({ id: result.id });
-    } catch (error) {
-      console.error('Error en /create_preference:', error);
-      res.status(500).json({ error: 'Error al crear la preferencia' });
+  try {
+    const event = await Event.findById(eventId).populate('createdBy');
+    if (!event) {
+      console.warn("⚠️ Evento no encontrado:", eventId);
+      return res.status(404).json({ error: 'Evento no encontrado' });
     }
+
+    const accessToken = event.createdBy.mercadoPagoAccessToken || process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const client = new MercadoPagoConfig({ accessToken });
+
+    const fixedSelectedMenus = {};
+    Object.entries(selectedMenus || {}).forEach(([dateStr, menu]) => {
+      if (menu) {
+        fixedSelectedMenus[dateStr] = menu;
+      }
+    });
+
+    console.log("🟡 Menús procesados:", fixedSelectedMenus);
+
+    const metadata = {
+      eventId,
+      price,
+      name,
+      lastName,
+      email,
+      tel,
+      selectedMenus: fixedSelectedMenus,
+      accessToken,
+      timestamp: Date.now() // ✅ Forzar diferencia si los datos son iguales
+    };
+
+    const body = {
+      items: [{
+        title: event.name,
+        quantity: 1,
+        unit_price: Number(price),
+        currency_id: 'ARS'
+      }],
+      payer: { name, surname: lastName, email, tel },
+      metadata,
+      auto_return: 'approved',
+      back_urls: {
+        success: `${process.env.CLIENT_URL}/payment_success`,
+        failure: `${process.env.CLIENT_URL}/payment_failure`,
+        pending: `${process.env.CLIENT_URL}/payment_pending`
+      },
+      notification_url: `${process.env.SERVER_URL}/webhook?source_news=webhooks`
+    };
+
+    console.log("📦 Enviando preferencia a MP:", {
+      title: body.items[0].title,
+      price: body.items[0].unit_price,
+      email,
+      nombreCompleto: `${name} ${lastName}`
+    });
+
+    const preference = new Preference(client);
+    const result = await preference.create({ body });
+
+    console.log("✅ Preferencia creada con ID:", result.id);
+
+    res.json({ id: result.id });
+  } catch (error) {
+    console.error('❌ Error en /create_preference:', error);
+    res.status(500).json({ error: 'Error al crear la preferencia' });
+  }
 });
+
 
 
 
