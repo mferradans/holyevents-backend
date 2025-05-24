@@ -253,7 +253,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     const leftMargin = 120;
     let yPosition = 50;
 
-    doc.rect(containerX, yPosition, containerWidth, 700).stroke();
+    const contentStartY = yPosition; // ← MARCAMOS DONDE EMPIEZA EL CONTENIDO
 
     if (event.coverImage) {
       try {
@@ -284,18 +284,17 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
       align: "center",
       width: containerWidth
     });
-    yPosition += 25;    
-    
-    const eventDate = DateTime.fromJSDate(new Date(event.startDate))
-    .setLocale("es")
-    .toFormat("cccc dd-MM-yyyy");
-  
+    yPosition += 25;
 
-  doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, {
-    align: "center",
-    width: containerWidth
-  });
-  yPosition += 30;
+    const eventDate = DateTime.fromJSDate(new Date(event.startDate))
+      .setLocale("es")
+      .toFormat("cccc dd-MM-yyyy");
+
+    doc.fontSize(14).font("Helvetica").text(`Fecha del evento: ${eventDate}`, containerX, yPosition, {
+      align: "center",
+      width: containerWidth
+    });
+    yPosition += 30;
 
     doc.fontSize(12).font("Helvetica-Bold").text("Nº de ticket:", leftMargin, yPosition, { continued: true }).font("Helvetica").text(` ${transaction._id}`);
     yPosition += 20;
@@ -316,11 +315,10 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
           .setLocale('es')
           .toFormat("cccc dd-MM, HH:mm");
 
-          const wrappedText = `• Menú del ${formatted}: ${menu}`;
-          const options = { width: 360 };
-          doc.font("Helvetica").text(wrappedText, leftMargin + 20, yPosition, options);
-          yPosition += doc.heightOfString(wrappedText, options) + 5;
-          
+        const wrappedText = `• Menú del ${formatted}: ${menu}`;
+        const options = { width: 360 };
+        doc.font("Helvetica").text(wrappedText, leftMargin + 20, yPosition, options);
+        yPosition += doc.heightOfString(wrappedText, options) + 5;
       });
     }
 
@@ -346,13 +344,17 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     const logoMiporaPath = path.join(__dirname, "images", "mipora.png");
     const logoSize = 40;
     const logosY = yPosition;
-    
+
     if (fs.existsSync(logoHolyPath)) {
       doc.image(logoHolyPath, containerX + containerWidth / 2 - logoSize - 10, logosY, { width: logoSize, height: logoSize });
     }
     if (fs.existsSync(logoMiporaPath)) {
-      doc.image(logoMiporaPath, containerX + containerWidth / 2 + 10 , logosY, { width: logoSize, height: logoSize });
+      doc.image(logoMiporaPath, containerX + containerWidth / 2 + 10, logosY, { width: logoSize, height: logoSize });
     }
+
+    // ⬇️ DIBUJAMOS EL CONTENEDOR EXTERIOR AL FINAL
+    const contentHeight = yPosition - contentStartY + logoSize + 10;
+    doc.rect(containerX, contentStartY, containerWidth, contentHeight).stroke();
 
     doc.end();
     console.log("🎉 PDF generado y enviado correctamente.");
