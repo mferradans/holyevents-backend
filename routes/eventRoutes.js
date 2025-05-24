@@ -285,9 +285,10 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
       tel,
       selectedMenus,
       metadataType,
+      paymentId: `manual_${Date.now()}`, // ← ¡Acá está el fix!
       verified: true,
     });
-
+    
     await transaction.save();
     res.status(201).json({ message: 'Venta manual registrada correctamente' });
   } catch (error) {
