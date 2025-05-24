@@ -90,4 +90,21 @@ router.get('/:adminId/public_key', async (req, res) => {
     res.status(500).json({ error: 'Error al obtener las credenciales del administrador' });
   }
 });
+
+// Ruta para obtener la publicKey y el teléfono del admin
+router.get('/:adminId/data', async (req, res) => {
+  try {
+    const admin = await Admin.findById(req.params.adminId).lean();
+    if (!admin) return res.status(404).json({ error: 'Admin no encontrado' });
+
+    res.json({
+      publicKey: admin.mercadoPagoPublicKey,
+      telefono: admin.telefono || null
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener datos del admin' });
+  }
+});
+
+
 export default router;

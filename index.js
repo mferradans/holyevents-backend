@@ -202,8 +202,6 @@ app.get('/payment_success', async (req, res) => {
 });
 
 
-
-
 app.get("/download_receipt/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
   console.log(`📥 [DOWNLOAD] Solicitud para descargar comprobante de transacción: ${transactionId}`);
@@ -343,10 +341,6 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     res.status(500).send("Error al generar el comprobante.");
   }
 });
-
-
-
-
 
 
 // Ruta para verificar la transacción por ID
