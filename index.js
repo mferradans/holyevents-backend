@@ -222,7 +222,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     }
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="comprobante_${transactionId}.pdf"`);
+    res.setHeader("Content-Disposition", `inline; filename="comprobante_${transactionId}.pdf"`);
 
     const doc = new PDFDocument({ margin: 50 });
     doc.pipe(res);
