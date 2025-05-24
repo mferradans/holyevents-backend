@@ -174,7 +174,7 @@ app.post('/create_preference', async (req, res) => {
 
     console.log("✅ Preferencia creada con ID:", result.id);
 
-    res.json({ id: result.id });
+    res.json({ id: result.id, init_point: result.init_point });
   } catch (error) {
     console.error('❌ Error en /create_preference:', error);
     res.status(500).json({ error: 'Error al crear la preferencia' });
