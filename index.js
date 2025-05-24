@@ -253,7 +253,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
     const leftMargin = 120;
     let yPosition = 50;
 
-    const contentStartY = yPosition; // ← MARCAMOS DONDE EMPIEZA EL CONTENIDO
+    const contentStartY = yPosition; // Marcar el inicio del recuadro dinámico
 
     if (event.coverImage) {
       try {
@@ -277,9 +277,22 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 
     yPosition += 160;
 
-    doc.fontSize(20).font("Helvetica-Bold").text(event.name.toUpperCase(), containerX, yPosition, { align: "center", width: containerWidth });
-    yPosition += 30;
+    // === TÍTULO DINÁMICO ===
+    const upperName = event.name.toUpperCase();
+    doc.font("Helvetica-Bold");
+    if (upperName.length > 60) {
+      doc.fontSize(16);
+    } else {
+      doc.fontSize(20);
+    }
+    const titleHeight = doc.heightOfString(upperName, {
+      width: containerWidth,
+      align: "center"
+    });
+    doc.text(upperName, containerX, yPosition, { align: "center", width: containerWidth });
+    yPosition += titleHeight + 10;
 
+    // === SUBTÍTULO ===
     doc.fontSize(14).font("Helvetica-Oblique").text("¡Ticket único e intransferible!", containerX, yPosition, {
       align: "center",
       width: containerWidth
@@ -352,7 +365,7 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
       doc.image(logoMiporaPath, containerX + containerWidth / 2 + 10, logosY, { width: logoSize, height: logoSize });
     }
 
-    // ⬇️ DIBUJAMOS EL CONTENEDOR EXTERIOR AL FINAL
+    // Dibuja el borde del recuadro principal ajustado al contenido
     const contentHeight = yPosition - contentStartY + logoSize + 10;
     doc.rect(containerX, contentStartY, containerWidth, contentHeight).stroke();
 
