@@ -268,6 +268,7 @@ router.get('/:eventId/sales', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Error al obtener las ventas del evento' });
   }
 });
+
 router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
   try {
     const { name, lastName, email, tel, selectedMenus, metadataType = 'manual' } = req.body;
@@ -275,6 +276,11 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
 
     if (!name || !lastName || !email || !tel) {
       return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ error: 'Evento no encontrado' });
     }
 
     const transaction = new Transaction({
@@ -287,8 +293,9 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
       metadataType,
       paymentId: `manual_${Date.now()}`,
       verified: true,
+      price: event.price,
     });
-    
+
     await transaction.save();
     res.status(201).json({ message: 'Venta manual registrada correctamente' });
   } catch (error) {
@@ -296,6 +303,7 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
     res.status(500).json({ error: error.message || 'Error al registrar la venta manual' });
   }
 });
+
 
 
 export default router;
