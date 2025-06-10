@@ -388,7 +388,12 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
     }
 
     if (transaction.verified) {
-      return res.json({ success: false, message: 'Este ticket ya fue utilizado para ingresar.' });
+      return res.json({
+        success: false,
+        message: 'Este ticket ya fue utilizado para ingresar.',
+        eventId: transaction.eventId, // necesario para que funcione el botón en el frontend
+        verified: true
+      });
     }
 
     res.json({
@@ -401,7 +406,7 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
       transactionDate: transaction.transactionDate,
       eventId: transaction.eventId,
       selectedMenus: transaction.selectedMenus || {},
-      verified: transaction.verified // ✅ Agregado
+      verified: transaction.verified
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al verificar la transacción.' });
@@ -427,6 +432,24 @@ app.post("/checkin_transaction/:transactionId", async (req, res) => {
     res.json({ success: true, message: 'Ingreso validado correctamente.' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al validar ingreso.' });
+  }
+});
+
+app.post("/unverify_transaction/:transactionId", async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transacción no encontrada.' });
+    }
+
+    transaction.verified = false;
+    await transaction.save();
+
+    res.json({ success: true, message: 'Venta desmarcada como verificada.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al desverificar la venta.' });
   }
 });
 
