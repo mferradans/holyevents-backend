@@ -378,7 +378,6 @@ app.get("/download_receipt/:transactionId", async (req, res) => {
 });
 
 
-// Ruta para verificar la transacción por ID
 app.get("/verify_transaction/:transactionId", async (req, res) => {
   const { transactionId } = req.params;
 
@@ -386,6 +385,10 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
     const transaction = await Transaction.findById(transactionId).lean();
     if (!transaction) {
       return res.json({ success: false, message: 'Transacción no encontrada.' });
+    }
+
+    if (transaction.verified) {
+      return res.json({ success: false, message: 'Este ticket ya fue utilizado para ingresar.' });
     }
 
     res.json({
@@ -397,10 +400,33 @@ app.get("/verify_transaction/:transactionId", async (req, res) => {
       price: transaction.price,
       transactionDate: transaction.transactionDate,
       eventId: transaction.eventId,
-      selectedMenus: transaction.selectedMenus || {}, // ✅ Incluye todos los menús
+      selectedMenus: transaction.selectedMenus || {},
+      verified: transaction.verified // ✅ Agregado
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al verificar la transacción.' });
+  }
+});
+
+app.post("/checkin_transaction/:transactionId", async (req, res) => {
+  const { transactionId } = req.params;
+
+  try {
+    const transaction = await Transaction.findById(transactionId);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transacción no encontrada.' });
+    }
+
+    if (transaction.verified) {
+      return res.json({ success: false, message: 'Este ticket ya fue validado previamente.' });
+    }
+
+    transaction.verified = true;
+    await transaction.save();
+
+    res.json({ success: true, message: 'Ingreso validado correctamente.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al validar ingreso.' });
   }
 });
 
