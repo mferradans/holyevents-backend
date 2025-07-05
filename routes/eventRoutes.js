@@ -297,7 +297,10 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
     });
 
     await transaction.save();
-    res.status(201).json({ message: 'Venta manual registrada correctamente' });
+    res.status(201).json({ 
+      message: 'Venta manual registrada correctamente',
+      transactionId: transaction._id 
+    });
   } catch (error) {
     console.error('❌ Error al guardar venta manual:', error);
     res.status(500).json({ error: error.message || 'Error al registrar la venta manual' });
