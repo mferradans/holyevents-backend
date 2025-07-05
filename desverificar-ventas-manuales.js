@@ -1,9 +1,19 @@
 import mongoose from 'mongoose';
 import Transaction from './models/Transaction.js';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+// Cargar variables de entorno
+dotenv.config();
 
 // Conectar a MongoDB
 const mongoURI = process.env.MONGODB_URI;
+
+// Validar que tenemos la URI
+if (!mongoURI) {
+  console.error('❌ ERROR: No se encontró MONGODB_URI en las variables de entorno');
+  console.error('💡 Asegúrate de que existe un archivo .env con MONGODB_URI configurado');
+  process.exit(1);
+}
 
 console.log('🔗 Conectando a MongoDB...');
 
