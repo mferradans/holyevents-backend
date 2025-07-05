@@ -292,7 +292,7 @@ router.post('/:eventId/manual-sale', verifyToken, async (req, res) => {
       selectedMenus,
       metadataType,
       paymentId: `manual_${Date.now()}`,
-      verified: true,
+      verified: false,
       price: event.price,
     });
 
